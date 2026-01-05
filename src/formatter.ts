@@ -47,35 +47,36 @@ export function formatBurnAlert(
     ? formatDuration(stats.averageTimeBetweenSeconds)
     : "N/A";
 
-  // Format top initiators with medals
+  // Format top searchers with medals
   const medals = ["🥇", "🥈", "🥉"];
-  const topInitiatorsText = stats.topInitiators
-    .map((initiator, index) => {
-      const addrShort = `${initiator.address.slice(0, 10)}...`;
-      const addrUrl = `https://etherscan.io/address/${initiator.address}`;
-      return `${medals[index]} <a href="${addrUrl}">${addrShort}</a> - ${initiator.transactionCount} transactions`;
+  const topSearchersText = stats.topInitiators
+    .map((searcher, index) => {
+      const addrShort = `${searcher.address.slice(0, 10)}...`;
+      const addrUrl = `https://etherscan.io/address/${searcher.address}`;
+      return `${medals[index]} <a href="${addrUrl}">${addrShort}</a> - ${searcher.transactionCount} burns`;
     })
     .join("\n");
 
-  return `🏆 <b>Token Transfer Detected</b>
+  return `🔥 <b>UNI Burn Detected</b>
 
-📁 <b>Most Recent Transaction</b>
-<b>Initiator:</b> <a href="${etherscanAddressUrl}">${burnerShort}</a>
-<b>Transaction Hash:</b> <a href="${etherscanTxUrl}">${txHashShort}</a>
+📁 <b>Latest Burn</b>
+<b>Searcher:</b> <a href="${etherscanAddressUrl}">${burnerShort}</a>
+<b>Transaction:</b> <a href="${etherscanTxUrl}">${txHashShort}</a>
+<b>Amount:</b> 4,000 UNI
 
-<b>Time Since Last Transaction:</b> ${timeSinceLastTx}
+<b>Time Since Last Burn:</b> ${timeSinceLastTx}
 
 📊 <b>Aggregate Statistics</b>
-<b>Total Tokens Sent:</b> ${totalTokens} tokens
-<b>Total Transactions:</b> ${stats.burnCount}
+<b>Total UNI Burned:</b> ${totalTokens} UNI
+<b>Total Burns:</b> ${stats.burnCount}
 <b>Average Time Between:</b> ${avgTimeBetween}
-<b>Total Initiators:</b> ${stats.uniqueInitiatorCount}
+<b>Unique Searchers:</b> ${stats.uniqueInitiatorCount}
 
-<b>Top 3 Initiators:</b>
-${topInitiatorsText}
+<b>Top Searchers:</b>
+${topSearchersText}
 
-💎 <a href="${etherscanTxUrl}">Ethereum (ETH) Blockchain Explorer</a>
-📈 <a href="${config.siteUrl}">View TokenJar Dashboard</a>`;
+💎 <a href="${etherscanTxUrl}">View on Etherscan</a>
+📈 <a href="${config.siteUrl}">TokenJar Dashboard</a>`;
 }
 
 /**

@@ -60,7 +60,7 @@ function formatDuration(seconds: number): string {
 }
 
 function formatStatsMessage(stats: ExtendedBurnStats, config: Config): string {
-  const totalTokens = parseFloat(stats.totalBurned).toLocaleString("en-US", {
+  const totalUni = parseFloat(stats.totalBurned).toLocaleString("en-US", {
     maximumFractionDigits: 0,
   });
 
@@ -73,32 +73,32 @@ function formatStatsMessage(stats: ExtendedBurnStats, config: Config): string {
     : "N/A";
 
   const medals = ["🥇", "🥈", "🥉"];
-  const topInitiatorsText = stats.topInitiators.length > 0
+  const topSearchersText = stats.topInitiators.length > 0
     ? stats.topInitiators
-        .map((initiator, index) => {
-          const addrShort = `${initiator.address.slice(0, 10)}...`;
-          const addrUrl = `https://etherscan.io/address/${initiator.address}`;
-          return `${medals[index]} <a href="${addrUrl}">${addrShort}</a> - ${initiator.transactionCount} transactions`;
+        .map((searcher, index) => {
+          const addrShort = `${searcher.address.slice(0, 10)}...`;
+          const addrUrl = `https://etherscan.io/address/${searcher.address}`;
+          return `${medals[index]} <a href="${addrUrl}">${addrShort}</a> - ${searcher.transactionCount} burns`;
         })
         .join("\n")
-    : "No transactions recorded yet";
+    : "No burns recorded yet";
 
-  return `📊 <b>Current Burn Statistics</b>
+  return `📊 <b>UNI Burn Statistics</b>
 
-<b>Total Tokens Sent:</b> ${totalTokens} tokens
-<b>Total Transactions:</b> ${stats.burnCount}
+<b>Total UNI Burned:</b> ${totalUni} UNI
+<b>Total Burns:</b> ${stats.burnCount}
 <b>Average Time Between:</b> ${avgTimeBetween}
-<b>Total Initiators:</b> ${stats.uniqueInitiatorCount}
+<b>Unique Searchers:</b> ${stats.uniqueInitiatorCount}
 <b>Time Since Last Burn:</b> ${timeSinceLast}
 
-<b>Top 3 Initiators:</b>
-${topInitiatorsText}
+<b>Top Searchers:</b>
+${topSearchersText}
 
-📈 <a href="${config.siteUrl}">View TokenJar Dashboard</a>`;
+📈 <a href="${config.siteUrl}">TokenJar Dashboard</a>`;
 }
 
 function formatMockBurnAlert(stats: ExtendedBurnStats, config: Config): string {
-  const totalTokens = parseFloat(stats.totalBurned).toLocaleString("en-US", {
+  const totalUni = parseFloat(stats.totalBurned).toLocaleString("en-US", {
     maximumFractionDigits: 0,
   });
 
@@ -111,35 +111,36 @@ function formatMockBurnAlert(stats: ExtendedBurnStats, config: Config): string {
     : "N/A";
 
   const medals = ["🥇", "🥈", "🥉"];
-  const topInitiatorsText = stats.topInitiators.length > 0
+  const topSearchersText = stats.topInitiators.length > 0
     ? stats.topInitiators
-        .map((initiator, index) => {
-          const addrShort = `${initiator.address.slice(0, 10)}...`;
-          const addrUrl = `https://etherscan.io/address/${initiator.address}`;
-          return `${medals[index]} <a href="${addrUrl}">${addrShort}</a> - ${initiator.transactionCount} transactions`;
+        .map((searcher, index) => {
+          const addrShort = `${searcher.address.slice(0, 10)}...`;
+          const addrUrl = `https://etherscan.io/address/${searcher.address}`;
+          return `${medals[index]} <a href="${addrUrl}">${addrShort}</a> - ${searcher.transactionCount} burns`;
         })
         .join("\n")
-    : "No transactions recorded yet";
+    : "No burns recorded yet";
 
-  return `🧪 <b>TEST: Token Transfer Detected</b>
+  return `🧪 <b>TEST: UNI Burn Detected</b>
 
-📁 <b>Most Recent Transaction</b>
-<b>Initiator:</b> <a href="https://etherscan.io/address/0x0000000000000000000000000000000000000000">0x0000...0000</a>
-<b>Transaction Hash:</b> <a href="https://etherscan.io/tx/0x0000000000000000000000000000000000000000000000000000000000000000">0x00000000...</a>
+📁 <b>Latest Burn</b>
+<b>Searcher:</b> <a href="https://etherscan.io/address/0x0000000000000000000000000000000000000000">0x0000...0000</a>
+<b>Transaction:</b> <a href="https://etherscan.io/tx/0x0000000000000000000000000000000000000000000000000000000000000000">0x00000000...</a>
+<b>Amount:</b> 4,000 UNI
 
-<b>Time Since Last Transaction:</b> ${timeSinceLast}
+<b>Time Since Last Burn:</b> ${timeSinceLast}
 
 📊 <b>Aggregate Statistics</b>
-<b>Total Tokens Sent:</b> ${totalTokens} tokens
-<b>Total Transactions:</b> ${stats.burnCount}
+<b>Total UNI Burned:</b> ${totalUni} UNI
+<b>Total Burns:</b> ${stats.burnCount}
 <b>Average Time Between:</b> ${avgTimeBetween}
-<b>Total Initiators:</b> ${stats.uniqueInitiatorCount}
+<b>Unique Searchers:</b> ${stats.uniqueInitiatorCount}
 
-<b>Top 3 Initiators:</b>
-${topInitiatorsText}
+<b>Top Searchers:</b>
+${topSearchersText}
 
-💎 <a href="https://etherscan.io/tx/0x0000000000000000000000000000000000000000000000000000000000000000">Ethereum (ETH) Blockchain Explorer</a>
-📈 <a href="${config.siteUrl}">View TokenJar Dashboard</a>`;
+💎 <a href="https://etherscan.io/tx/0x0000000000000000000000000000000000000000000000000000000000000000">View on Etherscan</a>
+📈 <a href="${config.siteUrl}">TokenJar Dashboard</a>`;
 }
 
 export function getTelegramBot(): TelegramBot {
