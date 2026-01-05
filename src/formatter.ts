@@ -1,51 +1,81 @@
-import type { BurnEvent, BurnStats, Config } from "./types";
+import type { BurnEvent, ExtendedBurnStats, Config } from "./types";
+
+/**
+ * Format seconds into a human-readable duration string
+ */
+function formatDuration(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
+
+  return parts.join(" ");
+}
 
 /**
  * Format a burn event for Telegram notification
  * Uses HTML formatting (Telegram's parse_mode: "HTML")
+ * Matches the Slack notification format
  */
 export function formatBurnAlert(
   burn: BurnEvent,
-  stats: BurnStats,
+  stats: ExtendedBurnStats,
   config: Config
 ): string {
-  const amount = parseFloat(burn.uniAmount);
-  const formattedAmount = amount.toLocaleString("en-US", {
-    maximumFractionDigits: 0,
-  });
-
   const burnerShort = `${burn.burner.slice(0, 6)}...${burn.burner.slice(-4)}`;
+  const txHashShort = `${burn.txHash.slice(0, 10)}...`;
   const etherscanTxUrl = `https://etherscan.io/tx/${burn.txHash}`;
   const etherscanAddressUrl = `https://etherscan.io/address/${burn.burner}`;
 
-  const date = new Date(burn.timestamp * 1000);
-  const formattedDate = date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZoneName: "short",
-  });
+  // Calculate time since last transaction
+  const now = Math.floor(Date.now() / 1000);
+  const timeSinceLastTx = stats.lastBurnTimestamp
+    ? formatDuration(now - stats.lastBurnTimestamp)
+    : "N/A";
 
-  const totalBurned = parseFloat(stats.totalBurned).toLocaleString("en-US", {
+  // Format total tokens
+  const totalTokens = parseFloat(stats.totalBurned).toLocaleString("en-US", {
     maximumFractionDigits: 0,
   });
 
-  const destinationEmoji = burn.destination === "firepit" ? "🏺" : "💀";
-  const destinationLabel = burn.destination === "firepit" ? "Firepit" : "0xdead";
+  // Format average time between
+  const avgTimeBetween = stats.averageTimeBetweenSeconds
+    ? formatDuration(stats.averageTimeBetweenSeconds)
+    : "N/A";
 
-  return `🔥 <b>UNI BURN DETECTED</b> 🔥
+  // Format top initiators with medals
+  const medals = ["🥇", "🥈", "🥉"];
+  const topInitiatorsText = stats.topInitiators
+    .map((initiator, index) => {
+      const addrShort = `${initiator.address.slice(0, 10)}...`;
+      const addrUrl = `https://etherscan.io/address/${initiator.address}`;
+      return `${medals[index]} <a href="${addrUrl}">${addrShort}</a> - ${initiator.transactionCount} transactions`;
+    })
+    .join("\n");
 
-<b>Amount:</b> ${formattedAmount} UNI
-<b>Destination:</b> ${destinationEmoji} ${destinationLabel}
-<b>Burner:</b> <a href="${etherscanAddressUrl}">${burnerShort}</a>
-<b>Time:</b> ${formattedDate}
+  return `🏆 <b>Token Transfer Detected</b>
 
-📊 <b>Running Total:</b> ${totalBurned} UNI (${stats.burnCount} burns)
+📁 <b>Most Recent Transaction</b>
+<b>Initiator:</b> <a href="${etherscanAddressUrl}">${burnerShort}</a>
+<b>Transaction Hash:</b> <a href="${etherscanTxUrl}">${txHashShort}</a>
 
-🔗 <a href="${etherscanTxUrl}">View Transaction</a>
-📈 <a href="${config.siteUrl}">Track TokenJar</a>`;
+<b>Time Since Last Transaction:</b> ${timeSinceLastTx}
+
+📊 <b>Aggregate Statistics</b>
+<b>Total Tokens Sent:</b> ${totalTokens} tokens
+<b>Total Transactions:</b> ${stats.burnCount}
+<b>Average Time Between:</b> ${avgTimeBetween}
+<b>Total Initiators:</b> ${stats.uniqueInitiatorCount}
+
+<b>Top 3 Initiators:</b>
+${topInitiatorsText}
+
+💎 <a href="${etherscanTxUrl}">Ethereum (ETH) Blockchain Explorer</a>
+📈 <a href="${config.siteUrl}">View TokenJar Dashboard</a>`;
 }
 
 /**

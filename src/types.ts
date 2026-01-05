@@ -38,6 +38,17 @@ export interface BurnStats {
   lastBurnTimestamp: number | null;
 }
 
+export interface TopInitiator {
+  address: string;
+  transactionCount: number;
+}
+
+export interface ExtendedBurnStats extends BurnStats {
+  uniqueInitiatorCount: number;
+  averageTimeBetweenSeconds: number | null;
+  topInitiators: TopInitiator[];
+}
+
 export interface Config {
   telegramBotToken: string;
   telegramChannelId: string;

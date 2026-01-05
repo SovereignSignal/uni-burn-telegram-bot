@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import type { StoredBurn, BurnStats } from "./types";
+import type { StoredBurn, BurnStats, ExtendedBurnStats, TopInitiator } from "./types";
 
 const DB_PATH = "./burns.db";
 
@@ -99,6 +99,63 @@ export function getRecentBurns(limit: number = 10): StoredBurn[] {
   return db
     .prepare("SELECT * FROM burns ORDER BY timestamp DESC LIMIT ?")
     .all(limit) as StoredBurn[];
+}
+
+export function getTopInitiators(limit: number = 3): TopInitiator[] {
+  const db = getDatabase();
+  const rows = db
+    .prepare(`
+      SELECT burner as address, COUNT(*) as transactionCount
+      FROM burns
+      GROUP BY burner
+      ORDER BY transactionCount DESC
+      LIMIT ?
+    `)
+    .all(limit) as TopInitiator[];
+  return rows;
+}
+
+export function getUniqueInitiatorCount(): number {
+  const db = getDatabase();
+  const row = db
+    .prepare("SELECT COUNT(DISTINCT burner) as count FROM burns")
+    .get() as { count: number };
+  return row?.count || 0;
+}
+
+export function getAverageTimeBetweenBurns(): number | null {
+  const db = getDatabase();
+
+  // Get all timestamps ordered
+  const rows = db
+    .prepare("SELECT timestamp FROM burns ORDER BY timestamp ASC")
+    .all() as { timestamp: number }[];
+
+  if (rows.length < 2) {
+    return null;
+  }
+
+  // Calculate average time between consecutive burns
+  let totalDiff = 0;
+  for (let i = 1; i < rows.length; i++) {
+    totalDiff += rows[i].timestamp - rows[i - 1].timestamp;
+  }
+
+  return totalDiff / (rows.length - 1);
+}
+
+export function getExtendedBurnStats(): ExtendedBurnStats {
+  const baseStats = getBurnStats();
+  const topInitiators = getTopInitiators(3);
+  const uniqueInitiatorCount = getUniqueInitiatorCount();
+  const averageTimeBetweenSeconds = getAverageTimeBetweenBurns();
+
+  return {
+    ...baseStats,
+    uniqueInitiatorCount,
+    averageTimeBetweenSeconds,
+    topInitiators,
+  };
 }
 
 export function getLastProcessedBlock(): bigint | null {

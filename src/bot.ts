@@ -1,5 +1,5 @@
 import { loadConfig } from "./config";
-import { initDatabase, isBurnNotified, saveBurn, getBurnStats, getLastProcessedBlock, setLastProcessedBlock, closeDatabase } from "./database";
+import { initDatabase, isBurnNotified, saveBurn, getExtendedBurnStats, getLastProcessedBlock, setLastProcessedBlock, closeDatabase } from "./database";
 import { initTelegramBot, sendBurnAlert, testConnection } from "./telegramService";
 import { initEthereumClient, getCurrentBlockNumber, fetchBurnsSinceBlock } from "./ethereumMonitor";
 import { formatBurnAlert, formatStartupMessage } from "./formatter";
@@ -46,7 +46,7 @@ async function processNewBurns(config: Config): Promise<void> {
       }
 
       // Get current stats for the message
-      const stats = getBurnStats();
+      const stats = getExtendedBurnStats();
 
       // Format and send the alert
       const message = formatBurnAlert(burn, stats, config);
