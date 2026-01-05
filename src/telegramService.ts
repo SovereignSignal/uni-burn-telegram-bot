@@ -1,14 +1,145 @@
 import TelegramBot from "node-telegram-bot-api";
-import type { Config } from "./types";
+import type { Config, ExtendedBurnStats } from "./types";
 
 let bot: TelegramBot | null = null;
+let statsCallback: (() => ExtendedBurnStats) | null = null;
+let configRef: Config | null = null;
 
 export function initTelegramBot(config: Config): TelegramBot {
   if (bot) return bot;
 
-  bot = new TelegramBot(config.telegramBotToken, { polling: false });
-  console.log("[Telegram] Bot initialized");
+  // Enable polling to receive commands
+  bot = new TelegramBot(config.telegramBotToken, { polling: true });
+  configRef = config;
+  console.log("[Telegram] Bot initialized with polling enabled");
   return bot;
+}
+
+export function registerStatsCommand(getStats: () => ExtendedBurnStats): void {
+  if (!bot) {
+    throw new Error("Telegram bot not initialized");
+  }
+
+  statsCallback = getStats;
+
+  bot.onText(/\/stats/, async (msg) => {
+    if (!statsCallback || !configRef) return;
+
+    const chatId = msg.chat.id;
+    const stats = statsCallback();
+
+    const message = formatStatsMessage(stats, configRef);
+    await sendMessage(chatId.toString(), message, { disable_web_page_preview: true });
+  });
+
+  bot.onText(/\/test/, async (msg) => {
+    if (!statsCallback || !configRef) return;
+
+    const chatId = msg.chat.id;
+    const stats = statsCallback();
+
+    // Send a mock burn alert to preview the format
+    const mockMessage = formatMockBurnAlert(stats, configRef);
+    await sendMessage(chatId.toString(), mockMessage, { disable_web_page_preview: true });
+  });
+
+  console.log("[Telegram] Command handlers registered: /stats, /test");
+}
+
+function formatDuration(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
+
+  return parts.join(" ");
+}
+
+function formatStatsMessage(stats: ExtendedBurnStats, config: Config): string {
+  const totalTokens = parseFloat(stats.totalBurned).toLocaleString("en-US", {
+    maximumFractionDigits: 0,
+  });
+
+  const avgTimeBetween = stats.averageTimeBetweenSeconds
+    ? formatDuration(stats.averageTimeBetweenSeconds)
+    : "N/A";
+
+  const timeSinceLast = stats.lastBurnTimestamp
+    ? formatDuration(Math.floor(Date.now() / 1000) - stats.lastBurnTimestamp)
+    : "N/A";
+
+  const medals = ["🥇", "🥈", "🥉"];
+  const topInitiatorsText = stats.topInitiators.length > 0
+    ? stats.topInitiators
+        .map((initiator, index) => {
+          const addrShort = `${initiator.address.slice(0, 10)}...`;
+          const addrUrl = `https://etherscan.io/address/${initiator.address}`;
+          return `${medals[index]} <a href="${addrUrl}">${addrShort}</a> - ${initiator.transactionCount} transactions`;
+        })
+        .join("\n")
+    : "No transactions recorded yet";
+
+  return `📊 <b>Current Burn Statistics</b>
+
+<b>Total Tokens Sent:</b> ${totalTokens} tokens
+<b>Total Transactions:</b> ${stats.burnCount}
+<b>Average Time Between:</b> ${avgTimeBetween}
+<b>Total Initiators:</b> ${stats.uniqueInitiatorCount}
+<b>Time Since Last Burn:</b> ${timeSinceLast}
+
+<b>Top 3 Initiators:</b>
+${topInitiatorsText}
+
+📈 <a href="${config.siteUrl}">View TokenJar Dashboard</a>`;
+}
+
+function formatMockBurnAlert(stats: ExtendedBurnStats, config: Config): string {
+  const totalTokens = parseFloat(stats.totalBurned).toLocaleString("en-US", {
+    maximumFractionDigits: 0,
+  });
+
+  const avgTimeBetween = stats.averageTimeBetweenSeconds
+    ? formatDuration(stats.averageTimeBetweenSeconds)
+    : "N/A";
+
+  const timeSinceLast = stats.lastBurnTimestamp
+    ? formatDuration(Math.floor(Date.now() / 1000) - stats.lastBurnTimestamp)
+    : "N/A";
+
+  const medals = ["🥇", "🥈", "🥉"];
+  const topInitiatorsText = stats.topInitiators.length > 0
+    ? stats.topInitiators
+        .map((initiator, index) => {
+          const addrShort = `${initiator.address.slice(0, 10)}...`;
+          const addrUrl = `https://etherscan.io/address/${initiator.address}`;
+          return `${medals[index]} <a href="${addrUrl}">${addrShort}</a> - ${initiator.transactionCount} transactions`;
+        })
+        .join("\n")
+    : "No transactions recorded yet";
+
+  return `🧪 <b>TEST: Token Transfer Detected</b>
+
+📁 <b>Most Recent Transaction</b>
+<b>Initiator:</b> <a href="https://etherscan.io/address/0x0000000000000000000000000000000000000000">0x0000...0000</a>
+<b>Transaction Hash:</b> <a href="https://etherscan.io/tx/0x0000000000000000000000000000000000000000000000000000000000000000">0x00000000...</a>
+
+<b>Time Since Last Transaction:</b> ${timeSinceLast}
+
+📊 <b>Aggregate Statistics</b>
+<b>Total Tokens Sent:</b> ${totalTokens} tokens
+<b>Total Transactions:</b> ${stats.burnCount}
+<b>Average Time Between:</b> ${avgTimeBetween}
+<b>Total Initiators:</b> ${stats.uniqueInitiatorCount}
+
+<b>Top 3 Initiators:</b>
+${topInitiatorsText}
+
+💎 <a href="https://etherscan.io/tx/0x0000000000000000000000000000000000000000000000000000000000000000">Ethereum (ETH) Blockchain Explorer</a>
+📈 <a href="${config.siteUrl}">View TokenJar Dashboard</a>`;
 }
 
 export function getTelegramBot(): TelegramBot {

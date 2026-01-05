@@ -1,6 +1,6 @@
 import { loadConfig } from "./config";
 import { initDatabase, isBurnNotified, saveBurn, getExtendedBurnStats, getLastProcessedBlock, setLastProcessedBlock, closeDatabase } from "./database";
-import { initTelegramBot, sendBurnAlert, testConnection } from "./telegramService";
+import { initTelegramBot, sendBurnAlert, testConnection, registerStatsCommand } from "./telegramService";
 import { initEthereumClient, getCurrentBlockNumber, fetchBurnsSinceBlock } from "./ethereumMonitor";
 import { formatBurnAlert, formatStartupMessage } from "./formatter";
 import type { Config } from "./types";
@@ -138,6 +138,9 @@ async function main(): Promise<void> {
       console.error("[Bot] Failed to connect to Telegram. Check your bot token and channel ID.");
       process.exit(1);
     }
+
+    // Register command handlers for /stats and /test
+    registerStatsCommand(getExtendedBurnStats);
 
     // Send startup message
     const startupMessage = formatStartupMessage(config);
