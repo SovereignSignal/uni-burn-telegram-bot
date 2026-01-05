@@ -1,0 +1,31 @@
+{
+  "name": "uni-burn-telegram-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot that monitors UNI token burns and sends alerts to a public channel",
+  "main": "dist/bot.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/bot.js",
+    "dev": "tsx watch src/bot.ts",
+    "view-history": "tsx src/viewHistory.ts"
+  },
+  "keywords": ["telegram", "bot", "uniswap", "uni", "burn", "ethereum"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^11.6.0",
+    "dotenv": "^16.4.7",
+    "node-telegram-bot-api": "^0.66.0",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.2",
+    "@types/node-telegram-bot-api": "^0.64.7",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
