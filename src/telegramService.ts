@@ -3,7 +3,18 @@ import type { Config, ExtendedBurnStats } from "./types";
 
 let bot: TelegramBot | null = null;
 let statsCallback: (() => ExtendedBurnStats) | null = null;
+let debugCallback: (() => Promise<DebugInfo>) | null = null;
 let configRef: Config | null = null;
+
+export interface DebugInfo {
+  currentBlock: bigint;
+  lastProcessedBlock: bigint | null;
+  recentBurnsCount: number;
+  firepitAddress: string;
+  burnAddress: string;
+  tokenAddress: string;
+  pollIntervalSeconds: number;
+}
 
 export function initTelegramBot(config: Config): TelegramBot {
   if (bot) return bot;
@@ -44,6 +55,50 @@ export function registerStatsCommand(getStats: () => ExtendedBurnStats): void {
   });
 
   console.log("[Telegram] Command handlers registered: /stats, /test");
+}
+
+export function registerDebugCommand(getDebugInfo: () => Promise<DebugInfo>): void {
+  if (!bot) {
+    throw new Error("Telegram bot not initialized");
+  }
+
+  debugCallback = getDebugInfo;
+
+  bot.onText(/\/debug/, async (msg) => {
+    if (!debugCallback || !configRef) return;
+
+    const chatId = msg.chat.id;
+
+    try {
+      const debug = await debugCallback();
+      const message = formatDebugMessage(debug);
+      await sendMessage(chatId.toString(), message, { disable_web_page_preview: true });
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      await sendMessage(chatId.toString(), `⚠️ Debug error: ${errorMsg}`, { disable_web_page_preview: true });
+    }
+  });
+
+  console.log("[Telegram] Debug command registered: /debug");
+}
+
+function formatDebugMessage(debug: DebugInfo): string {
+  const blocksBehind = debug.lastProcessedBlock
+    ? debug.currentBlock - debug.lastProcessedBlock
+    : "N/A";
+
+  return `🔧 <b>Debug Info</b>
+
+<b>Current Block:</b> ${debug.currentBlock.toString()}
+<b>Last Processed:</b> ${debug.lastProcessedBlock?.toString() || "None"}
+<b>Blocks Behind:</b> ${blocksBehind.toString()}
+<b>Burns in DB:</b> ${debug.recentBurnsCount}
+
+<b>Monitoring Config:</b>
+Token: <code>${debug.tokenAddress}</code>
+Firepit: <code>${debug.firepitAddress}</code>
+Dead: <code>${debug.burnAddress}</code>
+Poll Interval: ${debug.pollIntervalSeconds}s`;
 }
 
 function formatDuration(seconds: number): string {

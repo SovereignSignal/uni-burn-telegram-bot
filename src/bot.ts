@@ -1,6 +1,6 @@
 import { loadConfig } from "./config";
 import { initDatabase, isBurnNotified, saveBurn, getExtendedBurnStats, getLastProcessedBlock, setLastProcessedBlock, closeDatabase } from "./database";
-import { initTelegramBot, sendBurnAlert, testConnection, registerStatsCommand } from "./telegramService";
+import { initTelegramBot, sendBurnAlert, testConnection, registerStatsCommand, registerDebugCommand, type DebugInfo } from "./telegramService";
 import { initEthereumClient, getCurrentBlockNumber, fetchBurnsSinceBlock } from "./ethereumMonitor";
 import { formatBurnAlert, formatStartupMessage } from "./formatter";
 import type { Config } from "./types";
@@ -62,7 +62,8 @@ async function processNewBurns(config: Config): Promise<void> {
           timestamp: burn.timestamp,
           uniAmount: burn.uniAmount,
           uniAmountRaw: burn.uniAmountRaw,
-          burner: burn.burner,
+          burner: burn.initiator,           // Store the tx initiator
+          transferFrom: burn.transferFrom,  // Store the Transfer event's from
           destination: burn.destination,
           notifiedAt: Date.now(),
         });
@@ -141,6 +142,23 @@ async function main(): Promise<void> {
 
     // Register command handlers for /stats and /test
     registerStatsCommand(getExtendedBurnStats);
+
+    // Register debug command
+    registerDebugCommand(async (): Promise<DebugInfo> => {
+      const currentBlock = await getCurrentBlockNumber();
+      const lastProcessedBlock = getLastProcessedBlock();
+      const stats = getExtendedBurnStats();
+
+      return {
+        currentBlock,
+        lastProcessedBlock,
+        recentBurnsCount: stats.burnCount,
+        firepitAddress: config.firepitAddress,
+        burnAddress: config.burnAddress,
+        tokenAddress: config.tokenAddress,
+        pollIntervalSeconds: config.pollIntervalSeconds,
+      };
+    });
 
     // Send startup message
     const startupMessage = formatStartupMessage(config);
