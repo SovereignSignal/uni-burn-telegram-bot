@@ -5,8 +5,9 @@ import { initEthereumClient, getCurrentBlockNumber, fetchBurnsSinceBlock } from 
 import { formatBurnAlert, formatStartupMessage } from "./formatter";
 import type { Config } from "./types";
 
-// How many blocks to look back on first run (roughly 1 hour at 12s/block)
-const INITIAL_LOOKBACK_BLOCKS = 300n;
+// How many blocks to look back on first run (~10 minutes at 12s/block)
+// Reduced from 300 to optimize for Alchemy free tier (10 blocks/query limit)
+const INITIAL_LOOKBACK_BLOCKS = 50n;
 
 let isRunning = false;
 let pollInterval: NodeJS.Timeout | null = null;
@@ -66,6 +67,8 @@ async function processNewBurns(config: Config): Promise<void> {
           transferFrom: burn.transferFrom,  // Store the Transfer event's from
           destination: burn.destination,
           notifiedAt: Date.now(),
+          gasUsed: burn.gasUsed,
+          gasPrice: burn.gasPrice,
         });
       } catch (error) {
         console.error(`[Bot] Failed to send alert for ${burn.txHash}:`, error);

@@ -19,6 +19,8 @@ export interface BurnEvent {
   initiator: string;      // The actual tx.from (transaction sender)
   transferFrom: string;   // The Transfer event's from address (may be intermediate contract)
   destination: "firepit" | "dead";
+  gasUsed?: string;       // Gas used by the transaction
+  gasPrice?: string;      // Gas price in wei
 }
 
 export interface StoredBurn {
@@ -32,6 +34,8 @@ export interface StoredBurn {
   transferFrom?: string;    // The Transfer event's from address
   destination: string;
   notifiedAt: number;
+  gasUsed?: string;         // Gas used by the transaction
+  gasPrice?: string;        // Gas price in wei
 }
 
 export interface BurnStats {

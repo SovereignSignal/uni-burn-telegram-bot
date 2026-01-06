@@ -49,7 +49,7 @@ export async function getCurrentBlockNumber(): Promise<bigint> {
   return client.getBlockNumber();
 }
 
-const MAX_BLOCKS_PER_QUERY = 10_000n;
+const MAX_BLOCKS_PER_QUERY = 10n; // Alchemy free tier limit
 
 /**
  * Fetch Transfer logs in chunks to avoid RPC limits
@@ -91,12 +91,23 @@ async function fetchLogsInChunks({
 }
 
 /**
- * Get the actual transaction initiator (tx.from)
+ * Get transaction data including initiator and gas info
  */
-async function getTransactionInitiator(txHash: string): Promise<Address> {
+async function getTransactionData(txHash: string): Promise<{
+  initiator: Address;
+  gasPrice?: string;
+  gasUsed?: string;
+}> {
   const client = getEthereumClient();
-  const tx = await client.getTransaction({ hash: txHash as `0x${string}` });
-  return tx.from;
+  const [tx, receipt] = await Promise.all([
+    client.getTransaction({ hash: txHash as `0x${string}` }),
+    client.getTransactionReceipt({ hash: txHash as `0x${string}` }),
+  ]);
+  return {
+    initiator: tx.from,
+    gasPrice: tx.gasPrice?.toString(),
+    gasUsed: receipt.gasUsed.toString(),
+  };
 }
 
 /**
@@ -185,9 +196,9 @@ export async function fetchBurnsSinceBlock(
   );
 
   const burnDataPromises = burnEntries.map(async ([txHash, { log, destination }]) => {
-    const [timestamp, initiator] = await Promise.all([
+    const [timestamp, txData] = await Promise.all([
       getBlockTimestamp(log.blockNumber),
-      getTransactionInitiator(txHash),
+      getTransactionData(txHash),
     ]);
 
     return {
@@ -196,9 +207,11 @@ export async function fetchBurnsSinceBlock(
       timestamp,
       uniAmount: formatUnits(log.args.value, config.tokenDecimals),
       uniAmountRaw: log.args.value.toString(),
-      initiator,                    // The actual tx sender
+      initiator: txData.initiator,  // The actual tx sender
       transferFrom: log.args.from,  // The Transfer event's from address
       destination,
+      gasUsed: txData.gasUsed,
+      gasPrice: txData.gasPrice,
     } as BurnEvent;
   });
 
@@ -208,4 +221,24 @@ export async function fetchBurnsSinceBlock(
   burns.sort((a, b) => a.blockNumber - b.blockNumber);
 
   return burns;
+}
+
+/**
+ * Estimate block number for a given date
+ * Uses ~12 seconds per block average
+ */
+export async function estimateBlockForDate(targetDate: Date): Promise<bigint> {
+  const client = getEthereumClient();
+  const currentBlock = await client.getBlockNumber();
+  const currentTime = Math.floor(Date.now() / 1000);
+  const targetTime = Math.floor(targetDate.getTime() / 1000);
+
+  // Estimate based on ~12 seconds per block
+  const secondsAgo = currentTime - targetTime;
+  const blocksAgo = Math.floor(secondsAgo / 12);
+
+  const estimatedBlock = currentBlock - BigInt(blocksAgo);
+
+  // Ensure we don't go below block 0
+  return estimatedBlock > 0n ? estimatedBlock : 1n;
 }
