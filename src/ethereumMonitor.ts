@@ -91,6 +91,15 @@ async function fetchLogsInChunks({
 }
 
 /**
+ * Get the actual transaction initiator (tx.from)
+ */
+async function getTransactionInitiator(txHash: string): Promise<Address> {
+  const client = getEthereumClient();
+  const tx = await client.getTransaction({ hash: txHash as `0x${string}` });
+  return tx.from;
+}
+
+/**
  * Get block timestamp
  */
 async function getBlockTimestamp(blockNumber: bigint): Promise<number> {
@@ -170,21 +179,30 @@ export async function fetchBurnsSinceBlock(
   // Convert to BurnEvent array
   const burns: BurnEvent[] = [];
 
-  for (const [txHash, { log, destination }] of burnsByTx) {
-    if (!log.args.value || !log.args.from) continue;
+  // Fetch initiators and timestamps in parallel for efficiency
+  const burnEntries = Array.from(burnsByTx.entries()).filter(
+    ([, { log }]) => log.args.value && log.args.from
+  );
 
-    const timestamp = await getBlockTimestamp(log.blockNumber);
+  const burnDataPromises = burnEntries.map(async ([txHash, { log, destination }]) => {
+    const [timestamp, initiator] = await Promise.all([
+      getBlockTimestamp(log.blockNumber),
+      getTransactionInitiator(txHash),
+    ]);
 
-    burns.push({
+    return {
       txHash,
       blockNumber: Number(log.blockNumber),
       timestamp,
       uniAmount: formatUnits(log.args.value, config.tokenDecimals),
       uniAmountRaw: log.args.value.toString(),
-      burner: log.args.from,
+      initiator,                    // The actual tx sender
+      transferFrom: log.args.from,  // The Transfer event's from address
       destination,
-    });
-  }
+    } as BurnEvent;
+  });
+
+  burns.push(...(await Promise.all(burnDataPromises)));
 
   // Sort by block number ascending (oldest first for processing order)
   burns.sort((a, b) => a.blockNumber - b.blockNumber);

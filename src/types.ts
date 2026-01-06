@@ -16,7 +16,8 @@ export interface BurnEvent {
   timestamp: number;
   uniAmount: string;
   uniAmountRaw: string;
-  burner: string;
+  initiator: string;      // The actual tx.from (transaction sender)
+  transferFrom: string;   // The Transfer event's from address (may be intermediate contract)
   destination: "firepit" | "dead";
 }
 
@@ -27,7 +28,8 @@ export interface StoredBurn {
   timestamp: number;
   uniAmount: string;
   uniAmountRaw: string;
-  burner: string;
+  burner: string;           // Stores the initiator (tx.from) for backward compat
+  transferFrom?: string;    // The Transfer event's from address
   destination: string;
   notifiedAt: number;
 }

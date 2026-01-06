@@ -26,10 +26,10 @@ export function formatBurnAlert(
   stats: ExtendedBurnStats,
   config: Config
 ): string {
-  const burnerShort = `${burn.burner.slice(0, 6)}...${burn.burner.slice(-4)}`;
+  const initiatorShort = `${burn.initiator.slice(0, 6)}...${burn.initiator.slice(-4)}`;
   const txHashShort = `${burn.txHash.slice(0, 10)}...`;
   const etherscanTxUrl = `https://etherscan.io/tx/${burn.txHash}`;
-  const etherscanAddressUrl = `https://etherscan.io/address/${burn.burner}`;
+  const etherscanAddressUrl = `https://etherscan.io/address/${burn.initiator}`;
 
   // Calculate time since last transaction
   const now = Math.floor(Date.now() / 1000);
@@ -57,12 +57,17 @@ export function formatBurnAlert(
     })
     .join("\n");
 
+  // Format the actual burn amount
+  const formattedAmount = parseFloat(burn.uniAmount).toLocaleString("en-US", {
+    maximumFractionDigits: 0,
+  });
+
   return `🔥 <b>UNI Burn Detected</b>
 
 📁 <b>Latest Burn</b>
-<b>Searcher:</b> <a href="${etherscanAddressUrl}">${burnerShort}</a>
+<b>Searcher:</b> <a href="${etherscanAddressUrl}">${initiatorShort}</a>
 <b>Transaction:</b> <a href="${etherscanTxUrl}">${txHashShort}</a>
-<b>Amount:</b> 4,000 UNI
+<b>Amount:</b> ${formattedAmount} UNI
 
 <b>Time Since Last Burn:</b> ${timeSinceLastTx}
 

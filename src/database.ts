@@ -34,6 +34,14 @@ export function initDatabase(): Database.Database {
     );
   `);
 
+  // Migration: Add transferFrom column if it doesn't exist
+  try {
+    db.exec(`ALTER TABLE burns ADD COLUMN transferFrom TEXT`);
+    console.log("[Database] Added transferFrom column");
+  } catch {
+    // Column already exists, ignore
+  }
+
   console.log("[Database] Initialized SQLite database");
   return db;
 }
@@ -54,8 +62,8 @@ export function isBurnNotified(txHash: string): boolean {
 export function saveBurn(burn: Omit<StoredBurn, "id">): void {
   const db = getDatabase();
   db.prepare(`
-    INSERT OR IGNORE INTO burns (txHash, blockNumber, timestamp, uniAmount, uniAmountRaw, burner, destination, notifiedAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR IGNORE INTO burns (txHash, blockNumber, timestamp, uniAmount, uniAmountRaw, burner, transferFrom, destination, notifiedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     burn.txHash,
     burn.blockNumber,
@@ -63,6 +71,7 @@ export function saveBurn(burn: Omit<StoredBurn, "id">): void {
     burn.uniAmount,
     burn.uniAmountRaw,
     burn.burner,
+    burn.transferFrom || null,
     burn.destination,
     burn.notifiedAt
   );
