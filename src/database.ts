@@ -42,6 +42,22 @@ export function initDatabase(): Database.Database {
     // Column already exists, ignore
   }
 
+  // Migration: Add gasUsed column if it doesn't exist
+  try {
+    db.exec(`ALTER TABLE burns ADD COLUMN gasUsed TEXT`);
+    console.log("[Database] Added gasUsed column");
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Migration: Add gasPrice column if it doesn't exist
+  try {
+    db.exec(`ALTER TABLE burns ADD COLUMN gasPrice TEXT`);
+    console.log("[Database] Added gasPrice column");
+  } catch {
+    // Column already exists, ignore
+  }
+
   console.log("[Database] Initialized SQLite database");
   return db;
 }
@@ -62,8 +78,8 @@ export function isBurnNotified(txHash: string): boolean {
 export function saveBurn(burn: Omit<StoredBurn, "id">): void {
   const db = getDatabase();
   db.prepare(`
-    INSERT OR IGNORE INTO burns (txHash, blockNumber, timestamp, uniAmount, uniAmountRaw, burner, transferFrom, destination, notifiedAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR IGNORE INTO burns (txHash, blockNumber, timestamp, uniAmount, uniAmountRaw, burner, transferFrom, destination, notifiedAt, gasUsed, gasPrice)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     burn.txHash,
     burn.blockNumber,
@@ -73,7 +89,9 @@ export function saveBurn(burn: Omit<StoredBurn, "id">): void {
     burn.burner,
     burn.transferFrom || null,
     burn.destination,
-    burn.notifiedAt
+    burn.notifiedAt,
+    burn.gasUsed || null,
+    burn.gasPrice || null
   );
 }
 
