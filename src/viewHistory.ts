@@ -1,13 +1,13 @@
 import { initDatabase, getRecentBurns, getBurnStats } from "./database";
 
-function main(): void {
+async function main(): Promise<void> {
   console.log("=".repeat(50));
   console.log("UNI Burn History");
   console.log("=".repeat(50));
 
-  initDatabase();
+  await initDatabase();
 
-  const stats = getBurnStats();
+  const stats = await getBurnStats();
   console.log(`\nTotal Burned: ${stats.totalBurned} UNI`);
   console.log(`Total Burns: ${stats.burnCount}`);
 
@@ -20,7 +20,7 @@ function main(): void {
   console.log("Recent Burns:");
   console.log("-".repeat(50));
 
-  const burns = getRecentBurns(20);
+  const burns = await getRecentBurns(20);
 
   if (burns.length === 0) {
     console.log("No burns recorded yet.");
@@ -42,4 +42,4 @@ function main(): void {
   }
 }
 
-main();
+main().catch(console.error);
