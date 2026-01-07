@@ -1,5 +1,7 @@
 import TelegramBot from "node-telegram-bot-api";
-import type { Config, ExtendedBurnStats } from "./types";
+import type { Config, ExtendedBurnStats, BurnEvent } from "./types";
+import { getLastBurn } from "./database";
+import { formatBurnAlert } from "./formatter";
 
 let bot: TelegramBot | null = null;
 let statsCallback: (() => Promise<ExtendedBurnStats>) | null = null;
@@ -47,11 +49,43 @@ export function registerStatsCommand(getStats: () => Promise<ExtendedBurnStats>)
     if (!statsCallback || !configRef) return;
 
     const chatId = msg.chat.id;
+
+    // Fetch the last real burn from the database
+    const lastBurn = await getLastBurn();
+
+    if (!lastBurn) {
+      await sendMessage(
+        chatId.toString(),
+        "No burns recorded yet. Try again after a burn has been detected.",
+        { disable_web_page_preview: true }
+      );
+      return;
+    }
+
     const stats = await statsCallback();
 
-    // Send a mock burn alert to preview the format
-    const mockMessage = formatMockBurnAlert(stats, configRef);
-    await sendMessage(chatId.toString(), mockMessage, { disable_web_page_preview: true });
+    // Convert StoredBurn to BurnEvent format
+    const burnEvent: BurnEvent = {
+      txHash: lastBurn.txHash,
+      blockNumber: lastBurn.blockNumber,
+      timestamp: lastBurn.timestamp,
+      uniAmount: lastBurn.uniAmount,
+      uniAmountRaw: lastBurn.uniAmountRaw,
+      initiator: lastBurn.burner,
+      transferFrom: lastBurn.transferFrom || lastBurn.burner,
+      destination: lastBurn.destination as "firepit" | "dead",
+      gasUsed: lastBurn.gasUsed,
+      gasPrice: lastBurn.gasPrice,
+    };
+
+    // Format the alert and add TEST prefix
+    const alertMessage = formatBurnAlert(burnEvent, stats, configRef);
+    const testMessage = alertMessage.replace(
+      "🔥 <b>UNI Burn Detected</b>",
+      "🧪 <b>TEST: UNI Burn Detected</b>"
+    );
+
+    await sendMessage(chatId.toString(), testMessage, { disable_web_page_preview: true });
   });
 
   console.log("[Telegram] Command handlers registered: /stats, /test");
@@ -149,52 +183,6 @@ function formatStatsMessage(stats: ExtendedBurnStats, config: Config): string {
 <b>Top Searchers:</b>
 ${topSearchersText}
 
-📈 <a href="${config.siteUrl}">TokenJar Dashboard</a>`;
-}
-
-function formatMockBurnAlert(stats: ExtendedBurnStats, config: Config): string {
-  const totalUni = parseFloat(stats.totalBurned).toLocaleString("en-US", {
-    maximumFractionDigits: 0,
-  });
-
-  const avgTimeBetween = stats.averageTimeBetweenSeconds
-    ? formatDuration(stats.averageTimeBetweenSeconds)
-    : "N/A";
-
-  const timeSinceLast = stats.lastBurnTimestamp
-    ? formatDuration(Math.floor(Date.now() / 1000) - stats.lastBurnTimestamp)
-    : "N/A";
-
-  const medals = ["🥇", "🥈", "🥉"];
-  const topSearchersText = stats.topInitiators.length > 0
-    ? stats.topInitiators
-        .map((searcher, index) => {
-          const addrShort = `${searcher.address.slice(0, 10)}...`;
-          const addrUrl = `https://etherscan.io/address/${searcher.address}`;
-          return `${medals[index]} <a href="${addrUrl}">${addrShort}</a> - ${searcher.transactionCount} burns`;
-        })
-        .join("\n")
-    : "No burns recorded yet";
-
-  return `🧪 <b>TEST: UNI Burn Detected</b>
-
-📁 <b>Latest Burn</b>
-<b>Searcher:</b> <a href="https://etherscan.io/address/0x0000000000000000000000000000000000000000">0x0000...0000</a>
-<b>Transaction:</b> <a href="https://etherscan.io/tx/0x0000000000000000000000000000000000000000000000000000000000000000">0x00000000...</a>
-<b>Amount:</b> 4,000 UNI
-
-<b>Time Since Last Burn:</b> ${timeSinceLast}
-
-📊 <b>Aggregate Statistics</b>
-<b>Total UNI Burned:</b> ${totalUni} UNI
-<b>Total Burns:</b> ${stats.burnCount}
-<b>Average Time Between:</b> ${avgTimeBetween}
-<b>Unique Searchers:</b> ${stats.uniqueInitiatorCount}
-
-<b>Top Searchers:</b>
-${topSearchersText}
-
-💎 <a href="https://etherscan.io/tx/0x0000000000000000000000000000000000000000000000000000000000000000">View on Etherscan</a>
 📈 <a href="${config.siteUrl}">TokenJar Dashboard</a>`;
 }
 
