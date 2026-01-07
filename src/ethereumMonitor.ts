@@ -49,7 +49,7 @@ export async function getCurrentBlockNumber(): Promise<bigint> {
   return client.getBlockNumber();
 }
 
-const MAX_BLOCKS_PER_QUERY = 10n; // Alchemy free tier limit
+const MAX_BLOCKS_PER_QUERY = 9n; // Alchemy free tier: 10 blocks max (inclusive range)
 
 /**
  * Fetch Transfer logs in chunks to avoid RPC limits
