@@ -1,181 +1,211 @@
-import Database from "better-sqlite3";
+import { Pool } from "pg";
 import type { StoredBurn, BurnStats, ExtendedBurnStats, TopInitiator } from "./types";
 
-const DB_PATH = "./burns.db";
+let pool: Pool | null = null;
 
-let db: Database.Database | null = null;
+export async function initDatabase(): Promise<Pool> {
+  if (pool) return pool;
 
-export function initDatabase(): Database.Database {
-  if (db) return db;
+  const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
 
-  db = new Database(DB_PATH);
+  if (!connectionString) {
+    throw new Error("DATABASE_URL or POSTGRES_URL environment variable is required");
+  }
 
-  // Create tables
-  db.exec(`
+  pool = new Pool({
+    connectionString,
+    ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
+  });
+
+  // Test connection
+  const client = await pool.connect();
+  try {
+    await client.query("SELECT NOW()");
+    console.log("[Database] PostgreSQL connection established");
+  } finally {
+    client.release();
+  }
+
+  // Run migrations
+  await runMigrations();
+
+  console.log("[Database] Initialized PostgreSQL database");
+  return pool;
+}
+
+async function runMigrations(): Promise<void> {
+  if (!pool) throw new Error("Pool not initialized");
+
+  const createTablesSQL = `
     CREATE TABLE IF NOT EXISTS burns (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      txHash TEXT UNIQUE NOT NULL,
-      blockNumber INTEGER NOT NULL,
-      timestamp INTEGER NOT NULL,
-      uniAmount TEXT NOT NULL,
-      uniAmountRaw TEXT NOT NULL,
-      burner TEXT NOT NULL,
-      destination TEXT NOT NULL,
-      notifiedAt INTEGER NOT NULL
+      id SERIAL PRIMARY KEY,
+      tx_hash VARCHAR(66) UNIQUE NOT NULL,
+      block_number BIGINT NOT NULL,
+      timestamp BIGINT NOT NULL,
+      uni_amount TEXT NOT NULL,
+      uni_amount_raw TEXT NOT NULL,
+      burner VARCHAR(42) NOT NULL,
+      transfer_from VARCHAR(42),
+      destination VARCHAR(20) NOT NULL,
+      notified_at BIGINT NOT NULL,
+      gas_used TEXT,
+      gas_price TEXT
     );
 
-    CREATE INDEX IF NOT EXISTS idx_burns_txHash ON burns(txHash);
+    CREATE INDEX IF NOT EXISTS idx_burns_tx_hash ON burns(tx_hash);
     CREATE INDEX IF NOT EXISTS idx_burns_timestamp ON burns(timestamp);
-    CREATE INDEX IF NOT EXISTS idx_burns_blockNumber ON burns(blockNumber);
+    CREATE INDEX IF NOT EXISTS idx_burns_block_number ON burns(block_number);
+    CREATE INDEX IF NOT EXISTS idx_burns_burner ON burns(burner);
 
     CREATE TABLE IF NOT EXISTS state (
-      key TEXT PRIMARY KEY,
+      key VARCHAR(255) PRIMARY KEY,
       value TEXT NOT NULL
     );
-  `);
+  `;
 
-  // Migration: Add transferFrom column if it doesn't exist
-  try {
-    db.exec(`ALTER TABLE burns ADD COLUMN transferFrom TEXT`);
-    console.log("[Database] Added transferFrom column");
-  } catch {
-    // Column already exists, ignore
-  }
-
-  // Migration: Add gasUsed column if it doesn't exist
-  try {
-    db.exec(`ALTER TABLE burns ADD COLUMN gasUsed TEXT`);
-    console.log("[Database] Added gasUsed column");
-  } catch {
-    // Column already exists, ignore
-  }
-
-  // Migration: Add gasPrice column if it doesn't exist
-  try {
-    db.exec(`ALTER TABLE burns ADD COLUMN gasPrice TEXT`);
-    console.log("[Database] Added gasPrice column");
-  } catch {
-    // Column already exists, ignore
-  }
-
-  console.log("[Database] Initialized SQLite database");
-  return db;
+  await pool.query(createTablesSQL);
 }
 
-export function getDatabase(): Database.Database {
-  if (!db) {
-    return initDatabase();
+function getPool(): Pool {
+  if (!pool) {
+    throw new Error("Database not initialized. Call initDatabase first.");
   }
-  return db;
+  return pool;
 }
 
-export function isBurnNotified(txHash: string): boolean {
-  const db = getDatabase();
-  const row = db.prepare("SELECT 1 FROM burns WHERE txHash = ?").get(txHash);
-  return !!row;
+export async function isBurnNotified(txHash: string): Promise<boolean> {
+  const pool = getPool();
+  const result = await pool.query(
+    "SELECT 1 FROM burns WHERE tx_hash = $1",
+    [txHash]
+  );
+  return result.rowCount !== null && result.rowCount > 0;
 }
 
-export function saveBurn(burn: Omit<StoredBurn, "id">): void {
-  const db = getDatabase();
-  db.prepare(`
-    INSERT OR IGNORE INTO burns (txHash, blockNumber, timestamp, uniAmount, uniAmountRaw, burner, transferFrom, destination, notifiedAt, gasUsed, gasPrice)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    burn.txHash,
-    burn.blockNumber,
-    burn.timestamp,
-    burn.uniAmount,
-    burn.uniAmountRaw,
-    burn.burner,
-    burn.transferFrom || null,
-    burn.destination,
-    burn.notifiedAt,
-    burn.gasUsed || null,
-    burn.gasPrice || null
+export async function saveBurn(burn: Omit<StoredBurn, "id">): Promise<void> {
+  const pool = getPool();
+  await pool.query(
+    `INSERT INTO burns (tx_hash, block_number, timestamp, uni_amount, uni_amount_raw, burner, transfer_from, destination, notified_at, gas_used, gas_price)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     ON CONFLICT (tx_hash) DO NOTHING`,
+    [
+      burn.txHash,
+      burn.blockNumber,
+      burn.timestamp,
+      burn.uniAmount,
+      burn.uniAmountRaw,
+      burn.burner,
+      burn.transferFrom || null,
+      burn.destination,
+      burn.notifiedAt,
+      burn.gasUsed || null,
+      burn.gasPrice || null,
+    ]
   );
 }
 
-export function getBurnStats(): BurnStats {
-  const db = getDatabase();
+export async function getBurnStats(): Promise<BurnStats> {
+  const pool = getPool();
 
-  const totalRow = db
-    .prepare("SELECT SUM(CAST(uniAmountRaw AS REAL)) as total FROM burns")
-    .get() as { total: number | null };
+  const [totalResult, countResult, lastResult] = await Promise.all([
+    pool.query("SELECT SUM(CAST(uni_amount_raw AS NUMERIC)) as total FROM burns"),
+    pool.query("SELECT COUNT(*) as count FROM burns"),
+    pool.query("SELECT MAX(timestamp) as last_ts FROM burns"),
+  ]);
 
-  const countRow = db
-    .prepare("SELECT COUNT(*) as count FROM burns")
-    .get() as { count: number };
-
-  const lastRow = db
-    .prepare("SELECT MAX(timestamp) as lastTs FROM burns")
-    .get() as { lastTs: number | null };
-
-  // Convert from wei to UNI (18 decimals)
-  const totalWei = totalRow?.total || 0;
+  const totalWei = parseFloat(totalResult.rows[0]?.total) || 0;
   const totalUni = totalWei / 1e18;
 
   return {
     totalBurned: totalUni.toFixed(2),
-    burnCount: countRow?.count || 0,
-    lastBurnTimestamp: lastRow?.lastTs || null,
+    burnCount: parseInt(countResult.rows[0]?.count) || 0,
+    lastBurnTimestamp: lastResult.rows[0]?.last_ts
+      ? parseInt(lastResult.rows[0].last_ts)
+      : null,
   };
 }
 
-export function getRecentBurns(limit: number = 10): StoredBurn[] {
-  const db = getDatabase();
-  return db
-    .prepare("SELECT * FROM burns ORDER BY timestamp DESC LIMIT ?")
-    .all(limit) as StoredBurn[];
+function mapRowToStoredBurn(row: Record<string, unknown>): StoredBurn {
+  return {
+    id: row.id as number,
+    txHash: row.tx_hash as string,
+    blockNumber: parseInt(row.block_number as string),
+    timestamp: parseInt(row.timestamp as string),
+    uniAmount: row.uni_amount as string,
+    uniAmountRaw: row.uni_amount_raw as string,
+    burner: row.burner as string,
+    transferFrom: row.transfer_from as string | undefined,
+    destination: row.destination as string,
+    notifiedAt: parseInt(row.notified_at as string),
+    gasUsed: row.gas_used as string | undefined,
+    gasPrice: row.gas_price as string | undefined,
+  };
 }
 
-export function getTopInitiators(limit: number = 3): TopInitiator[] {
-  const db = getDatabase();
-  const rows = db
-    .prepare(`
-      SELECT burner as address, COUNT(*) as transactionCount
-      FROM burns
-      GROUP BY burner
-      ORDER BY transactionCount DESC
-      LIMIT ?
-    `)
-    .all(limit) as TopInitiator[];
-  return rows;
+export async function getRecentBurns(limit: number = 10): Promise<StoredBurn[]> {
+  const pool = getPool();
+  const result = await pool.query(
+    "SELECT * FROM burns ORDER BY timestamp DESC LIMIT $1",
+    [limit]
+  );
+  return result.rows.map(mapRowToStoredBurn);
 }
 
-export function getUniqueInitiatorCount(): number {
-  const db = getDatabase();
-  const row = db
-    .prepare("SELECT COUNT(DISTINCT burner) as count FROM burns")
-    .get() as { count: number };
-  return row?.count || 0;
+export async function getTopInitiators(limit: number = 3): Promise<TopInitiator[]> {
+  const pool = getPool();
+  const result = await pool.query(
+    `SELECT burner as address, COUNT(*) as transaction_count
+     FROM burns
+     GROUP BY burner
+     ORDER BY transaction_count DESC
+     LIMIT $1`,
+    [limit]
+  );
+  return result.rows.map((row) => ({
+    address: row.address as string,
+    transactionCount: parseInt(row.transaction_count as string),
+  }));
 }
 
-export function getAverageTimeBetweenBurns(): number | null {
-  const db = getDatabase();
+export async function getUniqueInitiatorCount(): Promise<number> {
+  const pool = getPool();
+  const result = await pool.query(
+    "SELECT COUNT(DISTINCT burner) as count FROM burns"
+  );
+  return parseInt(result.rows[0]?.count) || 0;
+}
 
-  // Get all timestamps ordered
-  const rows = db
-    .prepare("SELECT timestamp FROM burns ORDER BY timestamp ASC")
-    .all() as { timestamp: number }[];
+export async function getAverageTimeBetweenBurns(): Promise<number | null> {
+  const pool = getPool();
+  const result = await pool.query(
+    "SELECT timestamp FROM burns ORDER BY timestamp ASC"
+  );
+
+  const rows = result.rows as { timestamp: string }[];
 
   if (rows.length < 2) {
     return null;
   }
 
-  // Calculate average time between consecutive burns
   let totalDiff = 0;
   for (let i = 1; i < rows.length; i++) {
-    totalDiff += rows[i].timestamp - rows[i - 1].timestamp;
+    totalDiff += parseInt(rows[i].timestamp) - parseInt(rows[i - 1].timestamp);
   }
 
   return totalDiff / (rows.length - 1);
 }
 
-export function getExtendedBurnStats(): ExtendedBurnStats {
-  const baseStats = getBurnStats();
-  const topInitiators = getTopInitiators(3);
-  const uniqueInitiatorCount = getUniqueInitiatorCount();
-  const averageTimeBetweenSeconds = getAverageTimeBetweenBurns();
+export async function getExtendedBurnStats(): Promise<ExtendedBurnStats> {
+  const [baseStats, topInitiators, uniqueInitiatorCount, averageTimeBetweenSeconds] =
+    await Promise.all([
+      getBurnStats(),
+      getTopInitiators(3),
+      getUniqueInitiatorCount(),
+      getAverageTimeBetweenBurns(),
+    ]);
 
   return {
     ...baseStats,
@@ -185,25 +215,27 @@ export function getExtendedBurnStats(): ExtendedBurnStats {
   };
 }
 
-export function getLastProcessedBlock(): bigint | null {
-  const db = getDatabase();
-  const row = db
-    .prepare("SELECT value FROM state WHERE key = 'lastProcessedBlock'")
-    .get() as { value: string } | undefined;
-  return row ? BigInt(row.value) : null;
+export async function getLastProcessedBlock(): Promise<bigint | null> {
+  const pool = getPool();
+  const result = await pool.query(
+    "SELECT value FROM state WHERE key = 'lastProcessedBlock'"
+  );
+  return result.rows[0] ? BigInt(result.rows[0].value) : null;
 }
 
-export function setLastProcessedBlock(blockNumber: bigint): void {
-  const db = getDatabase();
-  db.prepare(`
-    INSERT OR REPLACE INTO state (key, value) VALUES ('lastProcessedBlock', ?)
-  `).run(blockNumber.toString());
+export async function setLastProcessedBlock(blockNumber: bigint): Promise<void> {
+  const pool = getPool();
+  await pool.query(
+    `INSERT INTO state (key, value) VALUES ('lastProcessedBlock', $1)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+    [blockNumber.toString()]
+  );
 }
 
-export function closeDatabase(): void {
-  if (db) {
-    db.close();
-    db = null;
-    console.log("[Database] Closed database connection");
+export async function closeDatabase(): Promise<void> {
+  if (pool) {
+    await pool.end();
+    pool = null;
+    console.log("[Database] Closed database connection pool");
   }
 }

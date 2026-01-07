@@ -5,9 +5,9 @@ import { initEthereumClient, getCurrentBlockNumber, fetchBurnsSinceBlock } from 
 import { formatBurnAlert, formatStartupMessage } from "./formatter";
 import type { Config } from "./types";
 
-// How many blocks to look back on first run (~10 minutes at 12s/block)
-// Reduced from 300 to optimize for Alchemy free tier (10 blocks/query limit)
-const INITIAL_LOOKBACK_BLOCKS = 50n;
+// How many blocks to look back on first run (~2 hours at 12s/block)
+// Increased to avoid missing burns during restarts/redeploys
+const INITIAL_LOOKBACK_BLOCKS = 600n;
 
 let isRunning = false;
 let pollInterval: NodeJS.Timeout | null = null;
@@ -15,7 +15,7 @@ let pollInterval: NodeJS.Timeout | null = null;
 async function processNewBurns(config: Config): Promise<void> {
   try {
     // Get the last processed block, or start from recent blocks
-    let fromBlock = getLastProcessedBlock();
+    let fromBlock = await getLastProcessedBlock();
 
     if (fromBlock === null) {
       // First run: look back a bit to catch any recent burns
@@ -32,7 +32,7 @@ async function processNewBurns(config: Config): Promise<void> {
 
     if (burns.length === 0) {
       const currentBlock = await getCurrentBlockNumber();
-      setLastProcessedBlock(currentBlock);
+      await setLastProcessedBlock(currentBlock);
       return;
     }
 
@@ -41,13 +41,13 @@ async function processNewBurns(config: Config): Promise<void> {
     // Process each burn
     for (const burn of burns) {
       // Skip if already notified
-      if (isBurnNotified(burn.txHash)) {
+      if (await isBurnNotified(burn.txHash)) {
         console.log(`[Bot] Skipping already notified burn: ${burn.txHash}`);
         continue;
       }
 
       // Get current stats for the message
-      const stats = getExtendedBurnStats();
+      const stats = await getExtendedBurnStats();
 
       // Format and send the alert
       const message = formatBurnAlert(burn, stats, config);
@@ -57,7 +57,7 @@ async function processNewBurns(config: Config): Promise<void> {
         console.log(`[Bot] Sent alert for burn: ${burn.txHash}`);
 
         // Save to database to prevent duplicate notifications
-        saveBurn({
+        await saveBurn({
           txHash: burn.txHash,
           blockNumber: burn.blockNumber,
           timestamp: burn.timestamp,
@@ -76,12 +76,12 @@ async function processNewBurns(config: Config): Promise<void> {
       }
 
       // Update last processed block after each successful notification
-      setLastProcessedBlock(BigInt(burn.blockNumber));
+      await setLastProcessedBlock(BigInt(burn.blockNumber));
     }
 
     // Update to current block after processing all
     const currentBlock = await getCurrentBlockNumber();
-    setLastProcessedBlock(currentBlock);
+    await setLastProcessedBlock(currentBlock);
 
   } catch (error) {
     console.error("[Bot] Error processing burns:", error);
@@ -128,7 +128,7 @@ async function main(): Promise<void> {
     console.log("[Bot] Configuration loaded");
 
     // Initialize database
-    initDatabase();
+    await initDatabase();
 
     // Initialize Ethereum client
     initEthereumClient(config);
@@ -149,8 +149,8 @@ async function main(): Promise<void> {
     // Register debug command
     registerDebugCommand(async (): Promise<DebugInfo> => {
       const currentBlock = await getCurrentBlockNumber();
-      const lastProcessedBlock = getLastProcessedBlock();
-      const stats = getExtendedBurnStats();
+      const lastProcessedBlock = await getLastProcessedBlock();
+      const stats = await getExtendedBurnStats();
 
       return {
         currentBlock,
@@ -172,10 +172,10 @@ async function main(): Promise<void> {
     await startPolling(config);
 
     // Handle graceful shutdown
-    const shutdown = () => {
+    const shutdown = async () => {
       console.log("\n[Bot] Shutting down...");
       stopPolling();
-      closeDatabase();
+      await closeDatabase();
       process.exit(0);
     };
 
@@ -184,7 +184,7 @@ async function main(): Promise<void> {
 
   } catch (error) {
     console.error("[Bot] Fatal error:", error);
-    closeDatabase();
+    await closeDatabase();
     process.exit(1);
   }
 }

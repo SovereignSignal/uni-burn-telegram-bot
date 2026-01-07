@@ -2,7 +2,7 @@ import TelegramBot from "node-telegram-bot-api";
 import type { Config, ExtendedBurnStats } from "./types";
 
 let bot: TelegramBot | null = null;
-let statsCallback: (() => ExtendedBurnStats) | null = null;
+let statsCallback: (() => Promise<ExtendedBurnStats>) | null = null;
 let debugCallback: (() => Promise<DebugInfo>) | null = null;
 let configRef: Config | null = null;
 
@@ -26,7 +26,7 @@ export function initTelegramBot(config: Config): TelegramBot {
   return bot;
 }
 
-export function registerStatsCommand(getStats: () => ExtendedBurnStats): void {
+export function registerStatsCommand(getStats: () => Promise<ExtendedBurnStats>): void {
   if (!bot) {
     throw new Error("Telegram bot not initialized");
   }
@@ -37,7 +37,7 @@ export function registerStatsCommand(getStats: () => ExtendedBurnStats): void {
     if (!statsCallback || !configRef) return;
 
     const chatId = msg.chat.id;
-    const stats = statsCallback();
+    const stats = await statsCallback();
 
     const message = formatStatsMessage(stats, configRef);
     await sendMessage(chatId.toString(), message, { disable_web_page_preview: true });
@@ -47,7 +47,7 @@ export function registerStatsCommand(getStats: () => ExtendedBurnStats): void {
     if (!statsCallback || !configRef) return;
 
     const chatId = msg.chat.id;
-    const stats = statsCallback();
+    const stats = await statsCallback();
 
     // Send a mock burn alert to preview the format
     const mockMessage = formatMockBurnAlert(stats, configRef);
