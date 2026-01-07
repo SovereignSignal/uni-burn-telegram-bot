@@ -7,7 +7,8 @@
     "build": "tsc",
     "start": "node dist/bot.js",
     "dev": "tsx watch src/bot.ts",
-    "view-history": "tsx src/viewHistory.ts"
+    "view-history": "tsx src/viewHistory.ts",
+    "backfill": "tsx src/backfill.ts"
   },
   "keywords": ["telegram", "bot", "uniswap", "uni", "burn", "ethereum"],
   "author": "",
