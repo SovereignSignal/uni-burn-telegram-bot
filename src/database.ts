@@ -154,6 +154,11 @@ export async function getRecentBurns(limit: number = 10): Promise<StoredBurn[]> 
   return result.rows.map(mapRowToStoredBurn);
 }
 
+export async function getLastBurn(): Promise<StoredBurn | null> {
+  const burns = await getRecentBurns(1);
+  return burns[0] || null;
+}
+
 export async function getTopInitiators(limit: number = 3): Promise<TopInitiator[]> {
   const pool = getPool();
   const result = await pool.query(
