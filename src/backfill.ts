@@ -21,8 +21,8 @@ dotenv.config();
 const FIREPIT_DEPLOYMENT_BLOCK = 24028203n;
 
 // Alchemy free tier limits
-const MAX_BLOCKS_PER_QUERY = 2000n; // Use larger chunks for backfill (Alchemy allows up to 2000 for getLogs)
-const DELAY_BETWEEN_CHUNKS_MS = 500; // Small delay to avoid rate limiting
+const MAX_BLOCKS_PER_QUERY = 10n; // Alchemy free tier allows max 10 blocks per getLogs query
+const DELAY_BETWEEN_CHUNKS_MS = 100; // Small delay to avoid rate limiting
 
 interface TransferEventArgs {
   from: Address;
