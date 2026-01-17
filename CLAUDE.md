@@ -70,12 +70,29 @@ src/
 **state table:**
 - Stores `lastProcessedBlock` for polling continuity
 
+**Database indexes:**
+- `idx_burns_tx_hash` - Fast duplicate checking
+- `idx_burns_timestamp` - Recent burns queries
+- `idx_burns_block_number` - Block range queries
+- `idx_burns_burner` - Top initiators aggregation
+
+**Connection pool settings:**
+- Max connections: 10
+- Idle timeout: 30 seconds
+- Connection timeout: 10 seconds
+
 ### Key Constants
 
-- `INITIAL_LOOKBACK_BLOCKS`: 600 (~2 hours at 12s/block)
-- `MAX_BLOCKS_PER_QUERY`: 9 (Alchemy free tier limit: 10 blocks inclusive)
+**Polling (bot.ts/ethereumMonitor.ts):**
+- `INITIAL_LOOKBACK_BLOCKS`: 600n (~2 hours at 12s/block)
+- `MAX_BLOCKS_PER_QUERY`: 9n (Alchemy free tier limit: 10 blocks inclusive, uses n-1 for safety)
 - Default poll interval: 60 seconds
 - Default burn threshold: 4000 UNI (in wei: `4000000000000000000000`)
+
+**Backfill (backfill.ts):**
+- `FIREPIT_DEPLOYMENT_BLOCK`: 24028203n (December 16, 2025)
+- `MAX_BLOCKS_PER_QUERY`: 10n (full Alchemy limit for historical scans)
+- `DELAY_BETWEEN_CHUNKS_MS`: 100ms (rate limiting protection)
 
 ## Environment Variables
 
@@ -88,9 +105,11 @@ src/
 **Optional:**
 - `POLL_INTERVAL_SECONDS` (default: 60)
 - `SITE_URL` (default: https://tokenjar.xyz)
-- `TOKEN_ADDRESS` (default: UNI token)
-- `FIREPIT_ADDRESS`, `BURN_ADDRESS` - Burn destinations
-- `AMOUNT_THRESHOLD` - Minimum burn amount for alerts
+- `TOKEN_ADDRESS` (default: UNI token `0x1f9840a85d5af5bf1d1762f925bdaddc4201f984`)
+- `TOKEN_DECIMALS` (default: 18)
+- `FIREPIT_ADDRESS` (default: `0x0D5Cd355e2aBEB8fb1552F56c965B867346d6721`)
+- `BURN_ADDRESS` (default: `0x000000000000000000000000000000000000dEaD`)
+- `AMOUNT_THRESHOLD` - Minimum burn amount for alerts (in wei, default: 4000 UNI)
 - `NODE_ENV` - Set to "production" for SSL database connections
 
 ## Telegram Bot Commands
@@ -135,8 +154,12 @@ src/
 ## Deployment Notes
 
 - Railway.app auto-provides `DATABASE_URL` from PostgreSQL addon
-- `railway.toml` configures build (`npm install && npm run build`) and start (`npm start`)
-- Bot sends startup message when initialized
+- `railway.toml` configuration:
+  - Builder: nixpacks
+  - Build: `npm install && npm run build`
+  - Start: `npm start`
+  - Restart policy: on_failure (max 10 retries)
+- Bot sends startup message to the configured channel when initialized
 - Set `NODE_ENV=production` for SSL database connections
 
 ## Common Tasks
@@ -165,5 +188,43 @@ src/
 
 - The bot uses polling (not webhooks) for simplicity
 - Alchemy free tier has a 10-block limit per `getLogs` query
-- Burns are deduplicated by transaction hash in the database
-- The backfill script starts from Firepit deployment (block 24028203)
+- Burns are deduplicated by transaction hash in the database (UNIQUE constraint + ON CONFLICT DO NOTHING)
+- The backfill script starts from Firepit deployment (block 24028203, December 16, 2025)
+- First UNI transfers to Firepit occurred at block 24116850 (December 29, 2025)
+
+## Key Interfaces (types.ts)
+
+| Interface | Purpose |
+|-----------|---------|
+| `TransferEvent` | Raw ERC-20 Transfer event from viem |
+| `BurnEvent` | Processed burn with initiator and metadata |
+| `StoredBurn` | Database row representation |
+| `BurnStats` | Basic statistics (total, count, last timestamp) |
+| `ExtendedBurnStats` | Full stats with top initiators and averages |
+| `TopInitiator` | Address and transaction count for leaderboard |
+| `Config` | All environment configuration values |
+| `DebugInfo` | Technical info for /debug command |
+
+## Formatter Functions (formatter.ts)
+
+| Function | Purpose |
+|----------|---------|
+| `formatBurnAlert()` | Main burn notification with stats and links |
+| `formatThresholdAlert()` | Alert when approaching burn threshold |
+| `formatStartupMessage()` | Bot online notification |
+| `formatErrorMessage()` | Error notification template |
+
+## Database Functions (database.ts)
+
+| Function | Purpose |
+|----------|---------|
+| `initDatabase()` | Connect to PostgreSQL and run migrations |
+| `isBurnNotified()` | Check if tx_hash already exists |
+| `saveBurn()` | Insert burn with ON CONFLICT DO NOTHING |
+| `getBurnStats()` | Get basic statistics |
+| `getExtendedBurnStats()` | Get full statistics for alerts |
+| `getRecentBurns()` | Get N most recent burns |
+| `getLastBurn()` | Get single most recent burn |
+| `getTopInitiators()` | Get leaderboard by transaction count |
+| `getLastProcessedBlock()` | Get polling checkpoint |
+| `setLastProcessedBlock()` | Update polling checkpoint |
