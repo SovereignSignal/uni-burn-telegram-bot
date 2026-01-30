@@ -3,6 +3,7 @@ import { initDatabase, isBurnNotified, saveBurn, getExtendedBurnStats, getLastPr
 import { initTelegramBot, sendBurnAlert, testConnection, registerStatsCommand, registerDebugCommand, type DebugInfo } from "./telegramService";
 import { initEthereumClient, getCurrentBlockNumber, fetchBurnsSinceBlock } from "./ethereumMonitor";
 import { formatBurnAlert, formatStartupMessage } from "./formatter";
+import { checkNeedsBackfill, runBackfill } from "./backfillService";
 import type { Config } from "./types";
 
 // How many blocks to look back on first run (~2 hours at 12s/block)
@@ -129,6 +130,15 @@ async function main(): Promise<void> {
 
     // Initialize database
     await initDatabase();
+
+    // Check if we need to backfill historical data (first run with empty DB)
+    const needsBackfill = await checkNeedsBackfill();
+    if (needsBackfill) {
+      console.log("[Bot] Empty database detected - running historical backfill...");
+      console.log("[Bot] This may take several minutes on first run.");
+      const backfillResult = await runBackfill(config);
+      console.log(`[Bot] Backfill complete: ${backfillResult.totalSaved} burns imported`);
+    }
 
     // Initialize Ethereum client
     initEthereumClient(config);
