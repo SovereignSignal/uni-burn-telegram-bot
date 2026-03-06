@@ -8,16 +8,12 @@ import {
   type Address,
   type Log,
 } from "viem";
-import { mainnet } from "viem/chains";
 import { saveBurn, getBurnStats } from "./database";
 import type { Config } from "./types";
+import type { ChainConfig } from "./chainConfig";
+import { getAlchemyRpcUrl, CHAIN_REGISTRY } from "./chainConfig";
 
-// Firepit was deployed at block 24028203 on December 16, 2025
-// First UNI transfers started at block 24116850 on December 29, 2025
-const FIREPIT_DEPLOYMENT_BLOCK = 24028203n;
-
-// Alchemy free tier limits
-const MAX_BLOCKS_PER_QUERY = 10n;
+// Delay between chunks for rate limiting
 const DELAY_BETWEEN_CHUNKS_MS = 100;
 
 interface TransferEventArgs {
@@ -41,36 +37,42 @@ export interface BackfillResult {
   totalSkipped: number;
 }
 
-export async function checkNeedsBackfill(): Promise<boolean> {
-  const stats = await getBurnStats();
+export async function checkNeedsBackfill(chain?: string): Promise<boolean> {
+  const stats = await getBurnStats(chain);
   return stats.burnCount === 0;
 }
 
 export async function runBackfill(
   config: Config,
+  chain?: ChainConfig,
   options?: { silent?: boolean }
 ): Promise<BackfillResult> {
+  // Default to ethereum for backwards compatibility
+  const chainConfig = chain || CHAIN_REGISTRY["ethereum"];
   const log = options?.silent ? () => {} : console.log.bind(console);
 
-  log("[Backfill] Starting historical burn backfill...");
+  log(`[Backfill] Starting historical burn backfill for ${chainConfig.name}...`);
 
   const client = createPublicClient({
-    chain: mainnet,
-    transport: http(`https://eth-mainnet.g.alchemy.com/v2/${config.alchemyApiKey}`),
+    chain: chainConfig.viemChain,
+    transport: http(getAlchemyRpcUrl(chainConfig, config.alchemyApiKey)),
   });
 
   const currentBlock = await client.getBlockNumber();
+  const deploymentBlock = chainConfig.deploymentBlock;
+  const maxBlocksPerQuery = chainConfig.maxBlocksPerQuery;
+
   log(`[Backfill] Current block: ${currentBlock}`);
-  log(`[Backfill] Starting from firepit deployment block: ${FIREPIT_DEPLOYMENT_BLOCK}`);
-  log(`[Backfill] Total blocks to scan: ${currentBlock - FIREPIT_DEPLOYMENT_BLOCK}`);
+  log(`[Backfill] Starting from deployment block: ${deploymentBlock}`);
+  log(`[Backfill] Total blocks to scan: ${currentBlock - deploymentBlock}`);
 
   const transferEvent = parseAbiItem(
     "event Transfer(address indexed from, address indexed to, uint256 value)"
   ) as AbiEvent;
 
-  const tokenAddress = getAddress(config.tokenAddress);
-  const firepitAddress = getAddress(config.firepitAddress);
-  const deadAddress = getAddress(config.burnAddress);
+  const tokenAddress = getAddress(chainConfig.tokenAddress);
+  const firepitAddress = getAddress(chainConfig.firepitAddress);
+  const deadAddress = getAddress(chainConfig.burnAddress);
 
   const result: BackfillResult = {
     totalFirepitBurns: 0,
@@ -80,12 +82,12 @@ export async function runBackfill(
   };
 
   // Process in chunks
-  for (let fromBlock = FIREPIT_DEPLOYMENT_BLOCK; fromBlock <= currentBlock; fromBlock += MAX_BLOCKS_PER_QUERY) {
-    const toBlock = fromBlock + MAX_BLOCKS_PER_QUERY - 1n > currentBlock
+  for (let fromBlock = deploymentBlock; fromBlock <= currentBlock; fromBlock += maxBlocksPerQuery) {
+    const toBlock = fromBlock + maxBlocksPerQuery - 1n > currentBlock
       ? currentBlock
-      : fromBlock + MAX_BLOCKS_PER_QUERY - 1n;
+      : fromBlock + maxBlocksPerQuery - 1n;
 
-    const progress = ((Number(fromBlock - FIREPIT_DEPLOYMENT_BLOCK) / Number(currentBlock - FIREPIT_DEPLOYMENT_BLOCK)) * 100).toFixed(1);
+    const progress = ((Number(fromBlock - deploymentBlock) / Number(currentBlock - deploymentBlock)) * 100).toFixed(1);
     log(`[Backfill] [${progress}%] Scanning blocks ${fromBlock} to ${toBlock}...`);
 
     try {
@@ -118,14 +120,14 @@ export async function runBackfill(
 
       // Process Firepit burns
       for (const logEntry of firepitLogs) {
-        const saveResult = await processAndSaveBurn(client, logEntry, "firepit", config, log);
+        const saveResult = await processAndSaveBurn(client, logEntry, "firepit", chainConfig, log);
         if (saveResult === "saved") result.totalSaved++;
         else if (saveResult === "skipped") result.totalSkipped++;
       }
 
       // Process dead address burns
       for (const logEntry of deadLogs) {
-        const saveResult = await processAndSaveBurn(client, logEntry, "dead", config, log);
+        const saveResult = await processAndSaveBurn(client, logEntry, "dead", chainConfig, log);
         if (saveResult === "saved") result.totalSaved++;
         else if (saveResult === "skipped") result.totalSkipped++;
       }
@@ -134,7 +136,7 @@ export async function runBackfill(
       // Wait and retry once
       await sleep(2000);
       log("[Backfill] Retrying...");
-      fromBlock -= MAX_BLOCKS_PER_QUERY; // Retry this chunk
+      fromBlock -= maxBlocksPerQuery; // Retry this chunk
     }
 
     await sleep(DELAY_BETWEEN_CHUNKS_MS);
@@ -153,7 +155,7 @@ async function processAndSaveBurn(
   client: ReturnType<typeof createPublicClient>,
   logEntry: TransferLog,
   destination: "firepit" | "dead",
-  config: Config,
+  chainConfig: ChainConfig,
   log: (...args: unknown[]) => void
 ): Promise<"saved" | "skipped" | "error"> {
   try {
@@ -168,7 +170,7 @@ async function processAndSaveBurn(
       client.getBlock({ blockNumber: logEntry.blockNumber }),
     ]);
 
-    const uniAmount = formatUnits(logEntry.args.value, config.tokenDecimals);
+    const uniAmount = formatUnits(logEntry.args.value, chainConfig.tokenDecimals);
     const uniAmountRaw = logEntry.args.value.toString();
 
     await saveBurn({
@@ -183,9 +185,10 @@ async function processAndSaveBurn(
       notifiedAt: Math.floor(Date.now() / 1000),
       gasUsed: receipt.gasUsed.toString(),
       gasPrice: tx.gasPrice?.toString(),
+      chain: chainConfig.id,
     });
 
-    log(`[Backfill]     Saved: ${uniAmount} UNI burned to ${destination} in tx ${logEntry.transactionHash.slice(0, 10)}...`);
+    log(`[Backfill]     Saved: ${uniAmount} UNI burned to ${destination} on ${chainConfig.name} in tx ${logEntry.transactionHash.slice(0, 10)}...`);
     return "saved";
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);

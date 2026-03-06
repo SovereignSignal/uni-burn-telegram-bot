@@ -39,10 +39,11 @@ export async function initDatabase(): Promise<Pool> {
 async function runMigrations(): Promise<void> {
   if (!pool) throw new Error("Pool not initialized");
 
+  // Create tables if they don't exist (original schema)
   const createTablesSQL = `
     CREATE TABLE IF NOT EXISTS burns (
       id SERIAL PRIMARY KEY,
-      tx_hash VARCHAR(66) UNIQUE NOT NULL,
+      tx_hash VARCHAR(66) NOT NULL,
       block_number BIGINT NOT NULL,
       timestamp BIGINT NOT NULL,
       uni_amount TEXT NOT NULL,
@@ -67,6 +68,63 @@ async function runMigrations(): Promise<void> {
   `;
 
   await pool.query(createTablesSQL);
+
+  // Multi-chain migration: add chain column
+  await migrateAddChainColumn();
+}
+
+async function migrateAddChainColumn(): Promise<void> {
+  if (!pool) throw new Error("Pool not initialized");
+
+  // Check if chain column exists
+  const colCheck = await pool.query(
+    `SELECT column_name FROM information_schema.columns
+     WHERE table_name = 'burns' AND column_name = 'chain'`
+  );
+
+  if (colCheck.rowCount === 0) {
+    console.log("[Database] Running multi-chain migration...");
+
+    // Add chain column with default 'ethereum' for existing rows
+    await pool.query(
+      `ALTER TABLE burns ADD COLUMN chain VARCHAR(30) NOT NULL DEFAULT 'ethereum'`
+    );
+
+    // Drop old unique constraint on tx_hash (may be named differently)
+    // PostgreSQL: find and drop the constraint
+    const constraints = await pool.query(
+      `SELECT constraint_name FROM information_schema.table_constraints
+       WHERE table_name = 'burns' AND constraint_type = 'UNIQUE'`
+    );
+    for (const row of constraints.rows) {
+      await pool.query(`ALTER TABLE burns DROP CONSTRAINT ${row.constraint_name}`);
+    }
+
+    // Add new composite unique constraint
+    await pool.query(
+      `ALTER TABLE burns ADD CONSTRAINT burns_tx_hash_chain_unique UNIQUE (tx_hash, chain)`
+    );
+
+    // Add chain index
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_burns_chain ON burns(chain)`
+    );
+
+    // Migrate state key: lastProcessedBlock -> lastProcessedBlock:ethereum
+    const stateRow = await pool.query(
+      `SELECT value FROM state WHERE key = 'lastProcessedBlock'`
+    );
+    if (stateRow.rows[0]) {
+      await pool.query(
+        `INSERT INTO state (key, value) VALUES ('lastProcessedBlock:ethereum', $1)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+        [stateRow.rows[0].value]
+      );
+      await pool.query(`DELETE FROM state WHERE key = 'lastProcessedBlock'`);
+    }
+
+    console.log("[Database] Multi-chain migration complete");
+  }
 }
 
 function getPool(): Pool {
@@ -76,11 +134,11 @@ function getPool(): Pool {
   return pool;
 }
 
-export async function isBurnNotified(txHash: string): Promise<boolean> {
+export async function isBurnNotified(txHash: string, chain: string): Promise<boolean> {
   const pool = getPool();
   const result = await pool.query(
-    "SELECT 1 FROM burns WHERE tx_hash = $1",
-    [txHash]
+    "SELECT 1 FROM burns WHERE tx_hash = $1 AND chain = $2",
+    [txHash, chain]
   );
   return result.rowCount !== null && result.rowCount > 0;
 }
@@ -88,9 +146,9 @@ export async function isBurnNotified(txHash: string): Promise<boolean> {
 export async function saveBurn(burn: Omit<StoredBurn, "id">): Promise<void> {
   const pool = getPool();
   await pool.query(
-    `INSERT INTO burns (tx_hash, block_number, timestamp, uni_amount, uni_amount_raw, burner, transfer_from, destination, notified_at, gas_used, gas_price)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-     ON CONFLICT (tx_hash) DO NOTHING`,
+    `INSERT INTO burns (tx_hash, block_number, timestamp, uni_amount, uni_amount_raw, burner, transfer_from, destination, notified_at, gas_used, gas_price, chain)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     ON CONFLICT (tx_hash, chain) DO NOTHING`,
     [
       burn.txHash,
       burn.blockNumber,
@@ -103,17 +161,20 @@ export async function saveBurn(burn: Omit<StoredBurn, "id">): Promise<void> {
       burn.notifiedAt,
       burn.gasUsed || null,
       burn.gasPrice || null,
+      burn.chain,
     ]
   );
 }
 
-export async function getBurnStats(): Promise<BurnStats> {
+export async function getBurnStats(chain?: string): Promise<BurnStats> {
   const pool = getPool();
+  const whereClause = chain ? "WHERE chain = $1" : "";
+  const params = chain ? [chain] : [];
 
   const [totalResult, countResult, lastResult] = await Promise.all([
-    pool.query("SELECT SUM(CAST(uni_amount_raw AS NUMERIC)) as total FROM burns"),
-    pool.query("SELECT COUNT(*) as count FROM burns"),
-    pool.query("SELECT MAX(timestamp) as last_ts FROM burns"),
+    pool.query(`SELECT SUM(CAST(uni_amount_raw AS NUMERIC)) as total FROM burns ${whereClause}`, params),
+    pool.query(`SELECT COUNT(*) as count FROM burns ${whereClause}`, params),
+    pool.query(`SELECT MAX(timestamp) as last_ts FROM burns ${whereClause}`, params),
   ]);
 
   const totalWei = parseFloat(totalResult.rows[0]?.total) || 0;
@@ -142,6 +203,7 @@ function mapRowToStoredBurn(row: Record<string, unknown>): StoredBurn {
     notifiedAt: parseInt(row.notified_at as string),
     gasUsed: row.gas_used as string | undefined,
     gasPrice: row.gas_price as string | undefined,
+    chain: (row.chain as string) || "ethereum",
   };
 }
 
@@ -159,15 +221,20 @@ export async function getLastBurn(): Promise<StoredBurn | null> {
   return burns[0] || null;
 }
 
-export async function getTopInitiators(limit: number = 3): Promise<TopInitiator[]> {
+export async function getTopInitiators(limit: number = 3, chain?: string): Promise<TopInitiator[]> {
   const pool = getPool();
+  const whereClause = chain ? "WHERE chain = $1" : "";
+  const params: (string | number)[] = chain ? [chain, limit] : [limit];
+  const limitParam = chain ? "$2" : "$1";
+
   const result = await pool.query(
     `SELECT burner as address, COUNT(*) as transaction_count
      FROM burns
+     ${whereClause}
      GROUP BY burner
      ORDER BY transaction_count DESC
-     LIMIT $1`,
-    [limit]
+     LIMIT ${limitParam}`,
+    params
   );
   return result.rows.map((row) => ({
     address: row.address as string,
@@ -175,18 +242,26 @@ export async function getTopInitiators(limit: number = 3): Promise<TopInitiator[
   }));
 }
 
-export async function getUniqueInitiatorCount(): Promise<number> {
+export async function getUniqueInitiatorCount(chain?: string): Promise<number> {
   const pool = getPool();
+  const whereClause = chain ? "WHERE chain = $1" : "";
+  const params = chain ? [chain] : [];
+
   const result = await pool.query(
-    "SELECT COUNT(DISTINCT burner) as count FROM burns"
+    `SELECT COUNT(DISTINCT burner) as count FROM burns ${whereClause}`,
+    params
   );
   return parseInt(result.rows[0]?.count) || 0;
 }
 
-export async function getAverageTimeBetweenBurns(): Promise<number | null> {
+export async function getAverageTimeBetweenBurns(chain?: string): Promise<number | null> {
   const pool = getPool();
+  const whereClause = chain ? "WHERE chain = $1" : "";
+  const params = chain ? [chain] : [];
+
   const result = await pool.query(
-    "SELECT timestamp FROM burns ORDER BY timestamp ASC"
+    `SELECT timestamp FROM burns ${whereClause} ORDER BY timestamp ASC`,
+    params
   );
 
   const rows = result.rows as { timestamp: string }[];
@@ -203,13 +278,13 @@ export async function getAverageTimeBetweenBurns(): Promise<number | null> {
   return totalDiff / (rows.length - 1);
 }
 
-export async function getExtendedBurnStats(): Promise<ExtendedBurnStats> {
+export async function getExtendedBurnStats(chain?: string): Promise<ExtendedBurnStats> {
   const [baseStats, topInitiators, uniqueInitiatorCount, averageTimeBetweenSeconds] =
     await Promise.all([
-      getBurnStats(),
-      getTopInitiators(3),
-      getUniqueInitiatorCount(),
-      getAverageTimeBetweenBurns(),
+      getBurnStats(chain),
+      getTopInitiators(3, chain),
+      getUniqueInitiatorCount(chain),
+      getAverageTimeBetweenBurns(chain),
     ]);
 
   return {
@@ -220,20 +295,21 @@ export async function getExtendedBurnStats(): Promise<ExtendedBurnStats> {
   };
 }
 
-export async function getLastProcessedBlock(): Promise<bigint | null> {
+export async function getLastProcessedBlock(chain: string): Promise<bigint | null> {
   const pool = getPool();
   const result = await pool.query(
-    "SELECT value FROM state WHERE key = 'lastProcessedBlock'"
+    "SELECT value FROM state WHERE key = $1",
+    [`lastProcessedBlock:${chain}`]
   );
   return result.rows[0] ? BigInt(result.rows[0].value) : null;
 }
 
-export async function setLastProcessedBlock(blockNumber: bigint): Promise<void> {
+export async function setLastProcessedBlock(blockNumber: bigint, chain: string): Promise<void> {
   const pool = getPool();
   await pool.query(
-    `INSERT INTO state (key, value) VALUES ('lastProcessedBlock', $1)
+    `INSERT INTO state (key, value) VALUES ($1, $2)
      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
-    [blockNumber.toString()]
+    [`lastProcessedBlock:${chain}`, blockNumber.toString()]
   );
 }
 

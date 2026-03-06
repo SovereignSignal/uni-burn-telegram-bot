@@ -1,4 +1,6 @@
 import type { BurnEvent, ExtendedBurnStats, Config } from "./types";
+import type { ChainConfig } from "./chainConfig";
+import { getExplorerTxUrl, getExplorerAddressUrl, CHAIN_REGISTRY } from "./chainConfig";
 
 /**
  * Format seconds into a human-readable duration string
@@ -18,18 +20,17 @@ function formatDuration(seconds: number): string {
 
 /**
  * Format a burn event for Telegram notification
- * Uses HTML formatting (Telegram's parse_mode: "HTML")
- * Matches the Slack notification format
  */
 export function formatBurnAlert(
   burn: BurnEvent,
   stats: ExtendedBurnStats,
-  config: Config
+  config: Config,
+  chain: ChainConfig
 ): string {
   const initiatorShort = `${burn.initiator.slice(0, 6)}...${burn.initiator.slice(-4)}`;
   const txHashShort = `${burn.txHash.slice(0, 10)}...`;
-  const etherscanTxUrl = `https://etherscan.io/tx/${burn.txHash}`;
-  const etherscanAddressUrl = `https://etherscan.io/address/${burn.initiator}`;
+  const txUrl = getExplorerTxUrl(chain, burn.txHash);
+  const addressUrl = getExplorerAddressUrl(chain, burn.initiator);
 
   // Calculate time since last transaction
   const now = Math.floor(Date.now() / 1000);
@@ -47,12 +48,13 @@ export function formatBurnAlert(
     ? formatDuration(stats.averageTimeBetweenSeconds)
     : "N/A";
 
-  // Format top searchers with medals
+  // Format top searchers with medals (use ethereum explorer for aggregate stats)
+  const defaultExplorer = CHAIN_REGISTRY["ethereum"];
   const medals = ["🥇", "🥈", "🥉"];
   const topSearchersText = stats.topInitiators
     .map((searcher, index) => {
       const addrShort = `${searcher.address.slice(0, 10)}...`;
-      const addrUrl = `https://etherscan.io/address/${searcher.address}`;
+      const addrUrl = getExplorerAddressUrl(defaultExplorer, searcher.address);
       return `${medals[index]} <a href="${addrUrl}">${addrShort}</a> - ${searcher.transactionCount} burns`;
     })
     .join("\n");
@@ -62,11 +64,16 @@ export function formatBurnAlert(
     maximumFractionDigits: 0,
   });
 
-  return `🔥 <b>UNI Burn Detected</b>
+  // Chain label: omit "on Ethereum" to preserve current format
+  const title = chain.id === "ethereum"
+    ? "🔥 <b>UNI Burn Detected</b>"
+    : `🔥 <b>UNI Burn Detected on ${chain.name}</b>`;
+
+  return `${title}
 
 📁 <b>Latest Burn</b>
-<b>Searcher:</b> <a href="${etherscanAddressUrl}">${initiatorShort}</a>
-<b>Transaction:</b> <a href="${etherscanTxUrl}">${txHashShort}</a>
+<b>Searcher:</b> <a href="${addressUrl}">${initiatorShort}</a>
+<b>Transaction:</b> <a href="${txUrl}">${txHashShort}</a>
 <b>Amount:</b> ${formattedAmount} UNI
 
 <b>Time Since Last Burn:</b> ${timeSinceLastTx}
@@ -80,7 +87,7 @@ export function formatBurnAlert(
 <b>Top Searchers:</b>
 ${topSearchersText}
 
-💎 <a href="${etherscanTxUrl}">View on Etherscan</a>
+💎 <a href="${txUrl}">View on ${chain.explorerName}</a>
 📈 <a href="${config.siteUrl}">TokenJar Dashboard</a>`;
 }
 
@@ -113,10 +120,12 @@ Current Jar Value: <b>${formattedUsd}</b>
 /**
  * Format a startup/test message
  */
-export function formatStartupMessage(config: Config): string {
+export function formatStartupMessage(config: Config, chains: ChainConfig[]): string {
+  const chainNames = chains.map((c) => c.name).join(", ");
   return `🤖 <b>UNI Burn Bot Online</b>
 
 Monitoring UNI token burns to Firepit and 0xdead addresses.
+<b>Chains:</b> ${chainNames}
 Alerts will be posted here when burns are detected.
 
 📈 <a href="${config.siteUrl}">View TokenJar Dashboard</a>`;

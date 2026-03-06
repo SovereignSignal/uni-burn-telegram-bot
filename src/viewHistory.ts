@@ -1,4 +1,5 @@
 import { initDatabase, getRecentBurns, getBurnStats } from "./database";
+import { getChainConfig, getExplorerTxUrl, CHAIN_REGISTRY } from "./chainConfig";
 
 async function main(): Promise<void> {
   console.log("=".repeat(50));
@@ -33,12 +34,14 @@ async function main(): Promise<void> {
       maximumFractionDigits: 2,
     });
     const burnerShort = `${burn.burner.slice(0, 6)}...${burn.burner.slice(-4)}`;
+    const chain = getChainConfig(burn.chain) || CHAIN_REGISTRY["ethereum"];
+    const txUrl = getExplorerTxUrl(chain, burn.txHash);
 
-    console.log(`\n${date.toLocaleString()}`);
+    console.log(`\n${date.toLocaleString()} [${chain.name}]`);
     console.log(`  Amount: ${amount} UNI`);
     console.log(`  Burner: ${burnerShort}`);
     console.log(`  Destination: ${burn.destination}`);
-    console.log(`  Tx: https://etherscan.io/tx/${burn.txHash}`);
+    console.log(`  Tx: ${txUrl}`);
   }
 }
 

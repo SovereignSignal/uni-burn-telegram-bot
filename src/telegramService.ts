@@ -1,22 +1,14 @@
 import TelegramBot from "node-telegram-bot-api";
-import type { Config, ExtendedBurnStats, BurnEvent } from "./types";
+import type { Config, ExtendedBurnStats, BurnEvent, DebugInfo } from "./types";
 import { getLastBurn } from "./database";
 import { formatBurnAlert } from "./formatter";
+import { getChainConfig, getExplorerAddressUrl, CHAIN_REGISTRY } from "./chainConfig";
+import type { ChainConfig } from "./chainConfig";
 
 let bot: TelegramBot | null = null;
 let statsCallback: (() => Promise<ExtendedBurnStats>) | null = null;
 let debugCallback: (() => Promise<DebugInfo>) | null = null;
 let configRef: Config | null = null;
-
-export interface DebugInfo {
-  currentBlock: bigint;
-  lastProcessedBlock: bigint | null;
-  recentBurnsCount: number;
-  firepitAddress: string;
-  burnAddress: string;
-  tokenAddress: string;
-  pollIntervalSeconds: number;
-}
 
 export function initTelegramBot(config: Config): TelegramBot {
   if (bot) return bot;
@@ -76,12 +68,16 @@ export function registerStatsCommand(getStats: () => Promise<ExtendedBurnStats>)
       destination: lastBurn.destination as "firepit" | "dead",
       gasUsed: lastBurn.gasUsed,
       gasPrice: lastBurn.gasPrice,
+      chain: lastBurn.chain,
     };
 
+    // Look up the chain config for this burn
+    const chain = getChainConfig(lastBurn.chain) || CHAIN_REGISTRY["ethereum"];
+
     // Format the alert and add TEST prefix
-    const alertMessage = formatBurnAlert(burnEvent, stats, configRef);
+    const alertMessage = formatBurnAlert(burnEvent, stats, configRef, chain);
     const testMessage = alertMessage.replace(
-      "🔥 <b>UNI Burn Detected</b>",
+      /🔥 <b>UNI Burn Detected[^<]*<\/b>/,
       "🧪 <b>TEST: UNI Burn Detected</b>"
     );
 
@@ -117,22 +113,22 @@ export function registerDebugCommand(getDebugInfo: () => Promise<DebugInfo>): vo
 }
 
 function formatDebugMessage(debug: DebugInfo): string {
-  const blocksBehind = debug.lastProcessedBlock
-    ? debug.currentBlock - debug.lastProcessedBlock
-    : "N/A";
+  const chainLines = debug.chains.map((c) => {
+    const blocksBehind = c.lastProcessedBlock
+      ? c.currentBlock - c.lastProcessedBlock
+      : "N/A";
+    return `<b>${c.chainName}:</b>
+  Block: ${c.currentBlock.toString()}
+  Last Processed: ${c.lastProcessedBlock?.toString() || "None"}
+  Behind: ${blocksBehind.toString()}`;
+  }).join("\n\n");
 
   return `🔧 <b>Debug Info</b>
 
-<b>Current Block:</b> ${debug.currentBlock.toString()}
-<b>Last Processed:</b> ${debug.lastProcessedBlock?.toString() || "None"}
-<b>Blocks Behind:</b> ${blocksBehind.toString()}
-<b>Burns in DB:</b> ${debug.recentBurnsCount}
+${chainLines}
 
-<b>Monitoring Config:</b>
-Token: <code>${debug.tokenAddress}</code>
-Firepit: <code>${debug.firepitAddress}</code>
-Dead: <code>${debug.burnAddress}</code>
-Poll Interval: ${debug.pollIntervalSeconds}s`;
+<b>Burns in DB:</b> ${debug.totalBurnsInDb}
+<b>Poll Interval:</b> ${debug.pollIntervalSeconds}s`;
 }
 
 function formatDuration(seconds: number): string {
@@ -161,12 +157,14 @@ function formatStatsMessage(stats: ExtendedBurnStats, config: Config): string {
     ? formatDuration(Math.floor(Date.now() / 1000) - stats.lastBurnTimestamp)
     : "N/A";
 
+  // Use ethereum explorer for aggregate top searchers
+  const defaultExplorer = CHAIN_REGISTRY["ethereum"];
   const medals = ["🥇", "🥈", "🥉"];
   const topSearchersText = stats.topInitiators.length > 0
     ? stats.topInitiators
         .map((searcher, index) => {
           const addrShort = `${searcher.address.slice(0, 10)}...`;
-          const addrUrl = `https://etherscan.io/address/${searcher.address}`;
+          const addrUrl = getExplorerAddressUrl(defaultExplorer, searcher.address);
           return `${medals[index]} <a href="${addrUrl}">${addrShort}</a> - ${searcher.transactionCount} burns`;
         })
         .join("\n")

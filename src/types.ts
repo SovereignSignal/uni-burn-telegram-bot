@@ -21,6 +21,7 @@ export interface BurnEvent {
   destination: "firepit" | "dead";
   gasUsed?: string;       // Gas used by the transaction
   gasPrice?: string;      // Gas price in wei
+  chain: string;          // Chain ID from ChainConfig (e.g., "ethereum", "unichain")
 }
 
 export interface StoredBurn {
@@ -36,6 +37,7 @@ export interface StoredBurn {
   notifiedAt: number;
   gasUsed?: string;         // Gas used by the transaction
   gasPrice?: string;        // Gas price in wei
+  chain: string;            // Chain ID (e.g., "ethereum", "unichain")
 }
 
 export interface BurnStats {
@@ -61,9 +63,19 @@ export interface Config {
   alchemyApiKey: string;
   pollIntervalSeconds: number;
   siteUrl: string;
-  tokenAddress: Address;
-  tokenDecimals: number;
-  firepitAddress: Address;
-  burnAddress: Address;
   amountThreshold: bigint;
+  enabledChains: string[];
+}
+
+export interface ChainDebugInfo {
+  chainId: string;
+  chainName: string;
+  currentBlock: bigint;
+  lastProcessedBlock: bigint | null;
+}
+
+export interface DebugInfo {
+  chains: ChainDebugInfo[];
+  totalBurnsInDb: number;
+  pollIntervalSeconds: number;
 }

@@ -1,61 +1,61 @@
 import { loadConfig } from "./config";
-import { initDatabase, isBurnNotified, saveBurn, getExtendedBurnStats, getLastProcessedBlock, setLastProcessedBlock, closeDatabase } from "./database";
-import { initTelegramBot, sendBurnAlert, testConnection, registerStatsCommand, registerDebugCommand, type DebugInfo } from "./telegramService";
-import { initEthereumClient, getCurrentBlockNumber, fetchBurnsSinceBlock } from "./ethereumMonitor";
+import { initDatabase, isBurnNotified, saveBurn, getExtendedBurnStats, getLastProcessedBlock, setLastProcessedBlock, closeDatabase, getBurnStats } from "./database";
+import { initTelegramBot, sendBurnAlert, testConnection, registerStatsCommand, registerDebugCommand } from "./telegramService";
+import { initChainClient, getCurrentBlockNumber, fetchBurnsSinceBlock } from "./chainMonitor";
 import { formatBurnAlert, formatStartupMessage } from "./formatter";
 import { checkNeedsBackfill, runBackfill } from "./backfillService";
-import type { Config } from "./types";
-
-// How many blocks to look back on first run (~2 hours at 12s/block)
-// Increased to avoid missing burns during restarts/redeploys
-const INITIAL_LOOKBACK_BLOCKS = 600n;
+import { getEnabledChains } from "./chainConfig";
+import type { ChainConfig } from "./chainConfig";
+import type { Config, DebugInfo, ChainDebugInfo } from "./types";
 
 let isRunning = false;
 let pollInterval: NodeJS.Timeout | null = null;
 
-async function processNewBurns(config: Config): Promise<void> {
+async function processNewBurns(config: Config, chain: ChainConfig): Promise<void> {
   try {
     // Get the last processed block, or start from recent blocks
-    let fromBlock = await getLastProcessedBlock();
+    let fromBlock = await getLastProcessedBlock(chain.id);
 
     if (fromBlock === null) {
-      // First run: look back a bit to catch any recent burns
-      const currentBlock = await getCurrentBlockNumber();
-      fromBlock = currentBlock - INITIAL_LOOKBACK_BLOCKS;
-      console.log(`[Bot] First run, starting from block ${fromBlock}`);
+      // First run: look back ~2 hours based on chain's block time
+      const lookbackBlocks = BigInt(Math.ceil(7200 / chain.blockTimeSeconds));
+      const currentBlock = await getCurrentBlockNumber(chain.id);
+      fromBlock = currentBlock - lookbackBlocks;
+      if (fromBlock < 0n) fromBlock = 0n;
+      console.log(`[Bot] First run for ${chain.name}, starting from block ${fromBlock}`);
     } else {
       // Continue from the next block after last processed
       fromBlock = fromBlock + 1n;
     }
 
     // Fetch new burns
-    const burns = await fetchBurnsSinceBlock(fromBlock, config);
+    const burns = await fetchBurnsSinceBlock(fromBlock, chain);
 
     if (burns.length === 0) {
-      const currentBlock = await getCurrentBlockNumber();
-      await setLastProcessedBlock(currentBlock);
+      const currentBlock = await getCurrentBlockNumber(chain.id);
+      await setLastProcessedBlock(currentBlock, chain.id);
       return;
     }
 
-    console.log(`[Bot] Found ${burns.length} burn events to process`);
+    console.log(`[Bot] Found ${burns.length} burn events on ${chain.name} to process`);
 
     // Process each burn
     for (const burn of burns) {
       // Skip if already notified
-      if (await isBurnNotified(burn.txHash)) {
+      if (await isBurnNotified(burn.txHash, chain.id)) {
         console.log(`[Bot] Skipping already notified burn: ${burn.txHash}`);
         continue;
       }
 
-      // Get current stats for the message
+      // Get current aggregate stats for the message
       const stats = await getExtendedBurnStats();
 
       // Format and send the alert
-      const message = formatBurnAlert(burn, stats, config);
+      const message = formatBurnAlert(burn, stats, config, chain);
 
       try {
         await sendBurnAlert(config.telegramChannelId, message);
-        console.log(`[Bot] Sent alert for burn: ${burn.txHash}`);
+        console.log(`[Bot] Sent alert for burn on ${chain.name}: ${burn.txHash}`);
 
         // Save to database to prevent duplicate notifications
         await saveBurn({
@@ -64,12 +64,13 @@ async function processNewBurns(config: Config): Promise<void> {
           timestamp: burn.timestamp,
           uniAmount: burn.uniAmount,
           uniAmountRaw: burn.uniAmountRaw,
-          burner: burn.initiator,           // Store the tx initiator
-          transferFrom: burn.transferFrom,  // Store the Transfer event's from
+          burner: burn.initiator,
+          transferFrom: burn.transferFrom,
           destination: burn.destination,
           notifiedAt: Date.now(),
           gasUsed: burn.gasUsed,
           gasPrice: burn.gasPrice,
+          chain: chain.id,
         });
       } catch (error) {
         console.error(`[Bot] Failed to send alert for ${burn.txHash}:`, error);
@@ -77,19 +78,19 @@ async function processNewBurns(config: Config): Promise<void> {
       }
 
       // Update last processed block after each successful notification
-      await setLastProcessedBlock(BigInt(burn.blockNumber));
+      await setLastProcessedBlock(BigInt(burn.blockNumber), chain.id);
     }
 
     // Update to current block after processing all
-    const currentBlock = await getCurrentBlockNumber();
-    await setLastProcessedBlock(currentBlock);
+    const currentBlock = await getCurrentBlockNumber(chain.id);
+    await setLastProcessedBlock(currentBlock, chain.id);
 
   } catch (error) {
-    console.error("[Bot] Error processing burns:", error);
+    console.error(`[Bot] Error processing burns on ${chain.name}:`, error);
   }
 }
 
-async function startPolling(config: Config): Promise<void> {
+async function startPolling(config: Config, chains: ChainConfig[]): Promise<void> {
   if (isRunning) {
     console.log("[Bot] Already running");
     return;
@@ -98,14 +99,18 @@ async function startPolling(config: Config): Promise<void> {
   isRunning = true;
   const intervalMs = config.pollIntervalSeconds * 1000;
 
-  console.log(`[Bot] Starting polling every ${config.pollIntervalSeconds} seconds`);
+  console.log(`[Bot] Starting polling every ${config.pollIntervalSeconds} seconds for ${chains.length} chain(s)`);
 
-  // Run immediately on start
-  await processNewBurns(config);
+  // Run immediately on start — sequential to respect shared rate limits
+  for (const chain of chains) {
+    await processNewBurns(config, chain);
+  }
 
   // Then poll at interval
   pollInterval = setInterval(async () => {
-    await processNewBurns(config);
+    for (const chain of chains) {
+      await processNewBurns(config, chain);
+    }
   }, intervalMs);
 }
 
@@ -128,20 +133,32 @@ async function main(): Promise<void> {
     const config = loadConfig();
     console.log("[Bot] Configuration loaded");
 
+    // Resolve enabled chains
+    const chains = getEnabledChains(config.enabledChains);
+    if (chains.length === 0) {
+      console.error("[Bot] No valid chains enabled. Check ENABLED_CHAINS env var.");
+      process.exit(1);
+    }
+    console.log(`[Bot] Enabled chains: ${chains.map((c) => c.name).join(", ")}`);
+
     // Initialize database
     await initDatabase();
 
-    // Check if we need to backfill historical data (first run with empty DB)
-    const needsBackfill = await checkNeedsBackfill();
-    if (needsBackfill) {
-      console.log("[Bot] Empty database detected - running historical backfill...");
-      console.log("[Bot] This may take several minutes on first run.");
-      const backfillResult = await runBackfill(config);
-      console.log(`[Bot] Backfill complete: ${backfillResult.totalSaved} burns imported`);
+    // Check if we need to backfill historical data per chain
+    for (const chain of chains) {
+      const needsBackfill = await checkNeedsBackfill(chain.id);
+      if (needsBackfill) {
+        console.log(`[Bot] Empty database for ${chain.name} - running historical backfill...`);
+        console.log("[Bot] This may take several minutes on first run.");
+        const backfillResult = await runBackfill(config, chain);
+        console.log(`[Bot] Backfill complete for ${chain.name}: ${backfillResult.totalSaved} burns imported`);
+      }
     }
 
-    // Initialize Ethereum client
-    initEthereumClient(config);
+    // Initialize chain clients
+    for (const chain of chains) {
+      initChainClient(chain, config.alchemyApiKey);
+    }
 
     // Initialize Telegram bot
     initTelegramBot(config);
@@ -158,28 +175,34 @@ async function main(): Promise<void> {
 
     // Register debug command
     registerDebugCommand(async (): Promise<DebugInfo> => {
-      const currentBlock = await getCurrentBlockNumber();
-      const lastProcessedBlock = await getLastProcessedBlock();
-      const stats = await getExtendedBurnStats();
+      const chainInfos: ChainDebugInfo[] = [];
+      for (const chain of chains) {
+        const currentBlock = await getCurrentBlockNumber(chain.id);
+        const lastProcessedBlock = await getLastProcessedBlock(chain.id);
+        chainInfos.push({
+          chainId: chain.id,
+          chainName: chain.name,
+          currentBlock,
+          lastProcessedBlock,
+        });
+      }
+
+      const stats = await getBurnStats();
 
       return {
-        currentBlock,
-        lastProcessedBlock,
-        recentBurnsCount: stats.burnCount,
-        firepitAddress: config.firepitAddress,
-        burnAddress: config.burnAddress,
-        tokenAddress: config.tokenAddress,
+        chains: chainInfos,
+        totalBurnsInDb: stats.burnCount,
         pollIntervalSeconds: config.pollIntervalSeconds,
       };
     });
 
     // Send startup message
-    const startupMessage = formatStartupMessage(config);
+    const startupMessage = formatStartupMessage(config, chains);
     await sendBurnAlert(config.telegramChannelId, startupMessage);
     console.log("[Bot] Startup message sent");
 
     // Start polling for burns
-    await startPolling(config);
+    await startPolling(config, chains);
 
     // Handle graceful shutdown
     const shutdown = async () => {
