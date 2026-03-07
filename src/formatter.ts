@@ -25,7 +25,8 @@ export function formatBurnAlert(
   burn: BurnEvent,
   stats: ExtendedBurnStats,
   config: Config,
-  chain: ChainConfig
+  chain: ChainConfig,
+  uniPriceUsd: number | null = null
 ): string {
   const initiatorShort = `${burn.initiator.slice(0, 6)}...${burn.initiator.slice(-4)}`;
   const txHashShort = `${burn.txHash.slice(0, 10)}...`;
@@ -59,10 +60,20 @@ export function formatBurnAlert(
     })
     .join("\n");
 
-  // Format the actual burn amount
-  const formattedAmount = parseFloat(burn.uniAmount).toLocaleString("en-US", {
+  // Format the actual burn amount with optional USD
+  const burnAmountNum = parseFloat(burn.uniAmount);
+  const formattedAmount = burnAmountNum.toLocaleString("en-US", {
     maximumFractionDigits: 0,
   });
+  const amountUsd = uniPriceUsd
+    ? ` (~$${(burnAmountNum * uniPriceUsd).toLocaleString("en-US", { maximumFractionDigits: 0 })})`
+    : "";
+
+  // Format total with optional USD
+  const totalBurnedNum = parseFloat(stats.totalBurned);
+  const totalUsd = uniPriceUsd
+    ? ` (~$${(totalBurnedNum * uniPriceUsd).toLocaleString("en-US", { maximumFractionDigits: 0 })})`
+    : "";
 
   // Chain label: omit "on Ethereum" to preserve current format
   const title = chain.id === "ethereum"
@@ -74,12 +85,12 @@ export function formatBurnAlert(
 📁 <b>Latest Burn</b>
 <b>Searcher:</b> <a href="${addressUrl}">${initiatorShort}</a>
 <b>Transaction:</b> <a href="${txUrl}">${txHashShort}</a>
-<b>Amount:</b> ${formattedAmount} UNI
+<b>Amount:</b> ${formattedAmount} UNI${amountUsd}
 
 <b>Time Since Last Burn:</b> ${timeSinceLastTx}
 
 📊 <b>Aggregate Statistics</b>
-<b>Total UNI Burned:</b> ${totalTokens} UNI
+<b>Total UNI Burned:</b> ${totalTokens} UNI${totalUsd}
 <b>Total Burns:</b> ${stats.burnCount}
 <b>Average Time Between:</b> ${avgTimeBetween}
 <b>Unique Searchers:</b> ${stats.uniqueInitiatorCount}

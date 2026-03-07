@@ -38,7 +38,8 @@ src/
 ├── chainMonitor.ts     # Multi-chain blockchain monitoring with viem (log fetching)
 ├── config.ts           # Environment variable loading and validation
 ├── database.ts         # PostgreSQL operations (burns table with chain column, state table)
-├── formatter.ts        # Telegram message templates (HTML format, dynamic explorer URLs)
+├── formatter.ts        # Telegram message templates (HTML format, dynamic explorer URLs, USD enrichment)
+├── uniswapApi.ts       # Uniswap Trading API client with cached UNI/USD pricing
 ├── telegramService.ts  # Telegram Bot API wrapper and command handlers
 ├── types.ts            # TypeScript interfaces (BurnEvent, Config, DebugInfo, etc.)
 ├── backfillService.ts  # Historical burn import logic (chain-aware)
@@ -79,6 +80,14 @@ src/
 4. `database.ts` checks for duplicates (by tx_hash + chain) and stores new burns
 5. `formatter.ts` creates HTML-formatted alert with dynamic explorer URLs
 6. `telegramService.ts` sends alert to configured channel
+
+### USD Price Enrichment
+
+- **`uniswapApi.ts`**: Fetches UNI/USD price via Uniswap Trading API (`POST /quote`)
+- Quotes 1000 UNI → USDC on Ethereum mainnet, derives per-UNI price
+- In-memory cache with 5-minute TTL (well within 3 req/sec API limit)
+- Graceful degradation: no API key = no USD values = alerts work as before
+- USD values shown in burn alerts (`Amount: 4,231 UNI (~$16,308)`), `/stats`, and `/price`
 
 ### Database Schema
 
@@ -140,14 +149,16 @@ src/
 - `SITE_URL` (default: https://tokenjar.xyz)
 - `AMOUNT_THRESHOLD` - Minimum burn amount for alerts (in wei, default: 4000 UNI)
 - `ENABLED_CHAINS` - Comma-separated chain IDs (default: "ethereum")
+- `UNISWAP_API_KEY` - Uniswap Trading API key for USD price enrichment
 - `NODE_ENV` - Set to "production" for SSL database connections
 
 ## Telegram Bot Commands
 
 | Command | Description |
 |---------|-------------|
-| `/stats` | Show comprehensive burn statistics (aggregate across all chains) |
+| `/stats` | Show comprehensive burn statistics (aggregate across all chains) with USD values |
 | `/test` | Send test alert using last recorded burn |
+| `/price` | Show current UNI/USD price from Uniswap Trading API |
 | `/debug` | Show per-chain block info and technical config |
 
 ## Code Conventions

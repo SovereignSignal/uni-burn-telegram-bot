@@ -1,10 +1,11 @@
 import { loadConfig } from "./config";
 import { initDatabase, isBurnNotified, saveBurn, getExtendedBurnStats, getLastProcessedBlock, setLastProcessedBlock, closeDatabase, getBurnStats } from "./database";
-import { initTelegramBot, sendBurnAlert, testConnection, registerStatsCommand, registerDebugCommand } from "./telegramService";
+import { initTelegramBot, sendBurnAlert, testConnection, registerStatsCommand, registerDebugCommand, registerPriceCommand } from "./telegramService";
 import { initChainClient, getCurrentBlockNumber, fetchBurnsSinceBlock } from "./chainMonitor";
 import { formatBurnAlert, formatStartupMessage } from "./formatter";
 import { checkNeedsBackfill, runBackfill } from "./backfillService";
 import { getEnabledChains } from "./chainConfig";
+import { initUniswapApi, getUniPriceUsd } from "./uniswapApi";
 import type { ChainConfig } from "./chainConfig";
 import type { Config, DebugInfo, ChainDebugInfo } from "./types";
 
@@ -47,11 +48,14 @@ async function processNewBurns(config: Config, chain: ChainConfig): Promise<void
         continue;
       }
 
-      // Get current aggregate stats for the message
-      const stats = await getExtendedBurnStats();
+      // Get current aggregate stats and price for the message
+      const [stats, uniPrice] = await Promise.all([
+        getExtendedBurnStats(),
+        getUniPriceUsd(),
+      ]);
 
       // Format and send the alert
-      const message = formatBurnAlert(burn, stats, config, chain);
+      const message = formatBurnAlert(burn, stats, config, chain, uniPrice);
 
       try {
         await sendBurnAlert(config.telegramChannelId, message);
@@ -155,6 +159,9 @@ async function main(): Promise<void> {
       }
     }
 
+    // Initialize Uniswap API for USD pricing
+    initUniswapApi(config.uniswapApiKey);
+
     // Initialize chain clients
     for (const chain of chains) {
       initChainClient(chain, config.alchemyApiKey);
@@ -170,8 +177,9 @@ async function main(): Promise<void> {
       process.exit(1);
     }
 
-    // Register command handlers for /stats and /test
-    registerStatsCommand(getExtendedBurnStats);
+    // Register command handlers for /stats, /test, and /price
+    registerStatsCommand(getExtendedBurnStats, getUniPriceUsd);
+    registerPriceCommand(getUniPriceUsd);
 
     // Register debug command
     registerDebugCommand(async (): Promise<DebugInfo> => {

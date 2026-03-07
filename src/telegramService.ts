@@ -8,6 +8,7 @@ import type { ChainConfig } from "./chainConfig";
 let bot: TelegramBot | null = null;
 let statsCallback: (() => Promise<ExtendedBurnStats>) | null = null;
 let debugCallback: (() => Promise<DebugInfo>) | null = null;
+let priceCallback: (() => Promise<number | null>) | null = null;
 let configRef: Config | null = null;
 
 export function initTelegramBot(config: Config): TelegramBot {
@@ -20,20 +21,27 @@ export function initTelegramBot(config: Config): TelegramBot {
   return bot;
 }
 
-export function registerStatsCommand(getStats: () => Promise<ExtendedBurnStats>): void {
+export function registerStatsCommand(
+  getStats: () => Promise<ExtendedBurnStats>,
+  getPrice: () => Promise<number | null>
+): void {
   if (!bot) {
     throw new Error("Telegram bot not initialized");
   }
 
   statsCallback = getStats;
+  priceCallback = getPrice;
 
   bot.onText(/\/stats/, async (msg) => {
     if (!statsCallback || !configRef) return;
 
     const chatId = msg.chat.id;
-    const stats = await statsCallback();
+    const [stats, price] = await Promise.all([
+      statsCallback(),
+      priceCallback ? priceCallback() : Promise.resolve(null),
+    ]);
 
-    const message = formatStatsMessage(stats, configRef);
+    const message = formatStatsMessage(stats, configRef, price);
     await sendMessage(chatId.toString(), message, { disable_web_page_preview: true });
   });
 
@@ -54,7 +62,10 @@ export function registerStatsCommand(getStats: () => Promise<ExtendedBurnStats>)
       return;
     }
 
-    const stats = await statsCallback();
+    const [stats, price] = await Promise.all([
+      statsCallback(),
+      priceCallback ? priceCallback() : Promise.resolve(null),
+    ]);
 
     // Convert StoredBurn to BurnEvent format
     const burnEvent: BurnEvent = {
@@ -75,7 +86,7 @@ export function registerStatsCommand(getStats: () => Promise<ExtendedBurnStats>)
     const chain = getChainConfig(lastBurn.chain) || CHAIN_REGISTRY["ethereum"];
 
     // Format the alert and add TEST prefix
-    const alertMessage = formatBurnAlert(burnEvent, stats, configRef, chain);
+    const alertMessage = formatBurnAlert(burnEvent, stats, configRef, chain, price);
     const testMessage = alertMessage.replace(
       /🔥 <b>UNI Burn Detected[^<]*<\/b>/,
       "🧪 <b>TEST: UNI Burn Detected</b>"
@@ -112,6 +123,27 @@ export function registerDebugCommand(getDebugInfo: () => Promise<DebugInfo>): vo
   console.log("[Telegram] Debug command registered: /debug");
 }
 
+export function registerPriceCommand(getPrice: () => Promise<number | null>): void {
+  if (!bot) {
+    throw new Error("Telegram bot not initialized");
+  }
+
+  bot.onText(/\/price/, async (msg) => {
+    const chatId = msg.chat.id;
+
+    const price = await getPrice();
+    if (price === null) {
+      await sendMessage(chatId.toString(), "USD price unavailable. Uniswap API key may not be configured.", { disable_web_page_preview: true });
+      return;
+    }
+
+    const message = `💰 <b>UNI Price</b>\n\n<b>Price:</b> $${price.toFixed(4)}\n<i>Source: Uniswap Trading API</i>`;
+    await sendMessage(chatId.toString(), message, { disable_web_page_preview: true });
+  });
+
+  console.log("[Telegram] Price command registered: /price");
+}
+
 function formatDebugMessage(debug: DebugInfo): string {
   const chainLines = debug.chains.map((c) => {
     const blocksBehind = c.lastProcessedBlock
@@ -144,10 +176,17 @@ function formatDuration(seconds: number): string {
   return parts.join(" ");
 }
 
-function formatStatsMessage(stats: ExtendedBurnStats, config: Config): string {
-  const totalUni = parseFloat(stats.totalBurned).toLocaleString("en-US", {
+function formatStatsMessage(stats: ExtendedBurnStats, config: Config, uniPriceUsd: number | null = null): string {
+  const totalBurnedNum = parseFloat(stats.totalBurned);
+  const totalUni = totalBurnedNum.toLocaleString("en-US", {
     maximumFractionDigits: 0,
   });
+  const totalUsd = uniPriceUsd
+    ? ` (~$${(totalBurnedNum * uniPriceUsd).toLocaleString("en-US", { maximumFractionDigits: 0 })})`
+    : "";
+  const priceLine = uniPriceUsd
+    ? `\n<b>UNI Price:</b> $${uniPriceUsd.toFixed(4)}`
+    : "";
 
   const avgTimeBetween = stats.averageTimeBetweenSeconds
     ? formatDuration(stats.averageTimeBetweenSeconds)
@@ -171,8 +210,8 @@ function formatStatsMessage(stats: ExtendedBurnStats, config: Config): string {
     : "No burns recorded yet";
 
   return `📊 <b>UNI Burn Statistics</b>
-
-<b>Total UNI Burned:</b> ${totalUni} UNI
+${priceLine}
+<b>Total UNI Burned:</b> ${totalUni} UNI${totalUsd}
 <b>Total Burns:</b> ${stats.burnCount}
 <b>Average Time Between:</b> ${avgTimeBetween}
 <b>Unique Searchers:</b> ${stats.uniqueInitiatorCount}

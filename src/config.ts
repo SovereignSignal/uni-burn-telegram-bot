@@ -29,5 +29,6 @@ export function loadConfig(): Config {
       optionalEnv("AMOUNT_THRESHOLD", "4000000000000000000000")
     ),
     enabledChains,
+    uniswapApiKey: optionalEnv("UNISWAP_API_KEY", ""),
   };
 }

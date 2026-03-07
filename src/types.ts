@@ -65,6 +65,7 @@ export interface Config {
   siteUrl: string;
   amountThreshold: bigint;
   enabledChains: string[];
+  uniswapApiKey: string;
 }
 
 export interface ChainDebugInfo {
