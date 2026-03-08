@@ -148,17 +148,6 @@ async function main(): Promise<void> {
     // Initialize database
     await initDatabase();
 
-    // Check if we need to backfill historical data per chain
-    for (const chain of chains) {
-      const needsBackfill = await checkNeedsBackfill(chain.id);
-      if (needsBackfill) {
-        console.log(`[Bot] Empty database for ${chain.name} - running historical backfill...`);
-        console.log("[Bot] This may take several minutes on first run.");
-        const backfillResult = await runBackfill(config, chain);
-        console.log(`[Bot] Backfill complete for ${chain.name}: ${backfillResult.totalSaved} burns imported`);
-      }
-    }
-
     // Initialize Uniswap API for USD pricing
     initUniswapApi(config.uniswapApiKey);
 
@@ -209,8 +198,22 @@ async function main(): Promise<void> {
     await sendBurnAlert(config.telegramChannelId, startupMessage);
     console.log("[Bot] Startup message sent");
 
-    // Start polling for burns
+    // Start polling for burns immediately (don't wait for backfill)
     await startPolling(config, chains);
+
+    // Run backfill in background for chains with no history
+    // This doesn't block polling — burns are deduplicated by (tx_hash, chain)
+    for (const chain of chains) {
+      const needsBackfill = await checkNeedsBackfill(chain.id);
+      if (needsBackfill) {
+        console.log(`[Bot] Starting background backfill for ${chain.name}...`);
+        runBackfill(config, chain).then((result) => {
+          console.log(`[Bot] Backfill complete for ${chain.name}: ${result.totalSaved} burns imported`);
+        }).catch((error) => {
+          console.error(`[Bot] Backfill failed for ${chain.name}:`, error);
+        });
+      }
+    }
 
     // Handle graceful shutdown
     const shutdown = async () => {

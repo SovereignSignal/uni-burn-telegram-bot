@@ -13,8 +13,9 @@ import type { Config } from "./types";
 import type { ChainConfig } from "./chainConfig";
 import { getAlchemyRpcUrl, CHAIN_REGISTRY } from "./chainConfig";
 
-// Delay between chunks for rate limiting
-const DELAY_BETWEEN_CHUNKS_MS = 100;
+// Delay between chunks for rate limiting (each chunk does 2 getLogs calls)
+// 500ms keeps us well under Alchemy free tier CU/s limits
+const DELAY_BETWEEN_CHUNKS_MS = 500;
 
 interface TransferEventArgs {
   from: Address;

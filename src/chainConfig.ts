@@ -68,7 +68,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     burnAddress: DEAD_ADDRESS,
     explorerUrl: "https://uniscan.xyz",
     explorerName: "Uniscan",
-    deploymentBlock: 1n,
+    deploymentBlock: 33348206n,      // Releaser deployed Nov 25, 2025
     blockTimeSeconds: 2,
     maxBlocksPerQuery: 9n,          // Alchemy free tier: 10 blocks inclusive (same as Ethereum)
     enabled: false,
