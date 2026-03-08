@@ -81,6 +81,8 @@ export async function runBackfill(
     totalSkipped: 0,
   };
 
+  const MAX_RETRIES = 3;
+
   // Process in chunks
   for (let fromBlock = deploymentBlock; fromBlock <= currentBlock; fromBlock += maxBlocksPerQuery) {
     const toBlock = fromBlock + maxBlocksPerQuery - 1n > currentBlock
@@ -90,53 +92,63 @@ export async function runBackfill(
     const progress = ((Number(fromBlock - deploymentBlock) / Number(currentBlock - deploymentBlock)) * 100).toFixed(1);
     log(`[Backfill] [${progress}%] Scanning blocks ${fromBlock} to ${toBlock}...`);
 
-    try {
-      // Fetch transfers to Firepit
-      const firepitLogs = await client.getLogs({
-        address: tokenAddress,
-        event: transferEvent,
-        args: { to: firepitAddress },
-        fromBlock,
-        toBlock,
-      }) as unknown as TransferLog[];
+    let retries = 0;
+    let success = false;
 
-      // Fetch transfers to 0xdead
-      const deadLogs = await client.getLogs({
-        address: tokenAddress,
-        event: transferEvent,
-        args: { to: deadAddress },
-        fromBlock,
-        toBlock,
-      }) as unknown as TransferLog[];
+    while (!success && retries <= MAX_RETRIES) {
+      try {
+        // Fetch transfers to Firepit
+        const firepitLogs = await client.getLogs({
+          address: tokenAddress,
+          event: transferEvent,
+          args: { to: firepitAddress },
+          fromBlock,
+          toBlock,
+        }) as unknown as TransferLog[];
 
-      if (firepitLogs.length > 0) {
-        log(`[Backfill]   Found ${firepitLogs.length} Firepit transfers`);
-        result.totalFirepitBurns += firepitLogs.length;
-      }
-      if (deadLogs.length > 0) {
-        log(`[Backfill]   Found ${deadLogs.length} dead address transfers`);
-        result.totalDeadBurns += deadLogs.length;
-      }
+        // Fetch transfers to 0xdead
+        const deadLogs = await client.getLogs({
+          address: tokenAddress,
+          event: transferEvent,
+          args: { to: deadAddress },
+          fromBlock,
+          toBlock,
+        }) as unknown as TransferLog[];
 
-      // Process Firepit burns
-      for (const logEntry of firepitLogs) {
-        const saveResult = await processAndSaveBurn(client, logEntry, "firepit", chainConfig, log);
-        if (saveResult === "saved") result.totalSaved++;
-        else if (saveResult === "skipped") result.totalSkipped++;
-      }
+        if (firepitLogs.length > 0) {
+          log(`[Backfill]   Found ${firepitLogs.length} Firepit transfers`);
+          result.totalFirepitBurns += firepitLogs.length;
+        }
+        if (deadLogs.length > 0) {
+          log(`[Backfill]   Found ${deadLogs.length} dead address transfers`);
+          result.totalDeadBurns += deadLogs.length;
+        }
 
-      // Process dead address burns
-      for (const logEntry of deadLogs) {
-        const saveResult = await processAndSaveBurn(client, logEntry, "dead", chainConfig, log);
-        if (saveResult === "saved") result.totalSaved++;
-        else if (saveResult === "skipped") result.totalSkipped++;
+        // Process Firepit burns
+        for (const logEntry of firepitLogs) {
+          const saveResult = await processAndSaveBurn(client, logEntry, "firepit", chainConfig, log);
+          if (saveResult === "saved") result.totalSaved++;
+          else if (saveResult === "skipped") result.totalSkipped++;
+        }
+
+        // Process dead address burns
+        for (const logEntry of deadLogs) {
+          const saveResult = await processAndSaveBurn(client, logEntry, "dead", chainConfig, log);
+          if (saveResult === "saved") result.totalSaved++;
+          else if (saveResult === "skipped") result.totalSkipped++;
+        }
+
+        success = true;
+      } catch (error) {
+        retries++;
+        console.error(`[Backfill] Error processing blocks ${fromBlock}-${toBlock} (attempt ${retries}/${MAX_RETRIES}):`, error);
+        if (retries <= MAX_RETRIES) {
+          await sleep(2000 * retries);
+          log(`[Backfill] Retrying (${retries}/${MAX_RETRIES})...`);
+        } else {
+          log(`[Backfill] Skipping blocks ${fromBlock}-${toBlock} after ${MAX_RETRIES} failed attempts`);
+        }
       }
-    } catch (error) {
-      console.error(`[Backfill] Error processing blocks ${fromBlock}-${toBlock}:`, error);
-      // Wait and retry once
-      await sleep(2000);
-      log("[Backfill] Retrying...");
-      fromBlock -= maxBlocksPerQuery; // Retry this chunk
     }
 
     await sleep(DELAY_BETWEEN_CHUNKS_MS);

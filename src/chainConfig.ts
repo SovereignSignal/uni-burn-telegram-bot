@@ -70,7 +70,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     explorerName: "Uniscan",
     deploymentBlock: 1n,
     blockTimeSeconds: 2,
-    maxBlocksPerQuery: 1000n,
+    maxBlocksPerQuery: 9n,          // Alchemy free tier: 10 blocks inclusive (same as Ethereum)
     enabled: false,
   },
   arbitrum: {
@@ -87,7 +87,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     explorerName: "Arbiscan",
     deploymentBlock: 1n,
     blockTimeSeconds: 0.25,
-    maxBlocksPerQuery: 10000n,
+    maxBlocksPerQuery: 9n,          // Alchemy free tier: 10 blocks inclusive
     enabled: false,
   },
   base: {
@@ -104,7 +104,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     explorerName: "Basescan",
     deploymentBlock: 1n,
     blockTimeSeconds: 2,
-    maxBlocksPerQuery: 1000n,
+    maxBlocksPerQuery: 9n,          // Alchemy free tier: 10 blocks inclusive
     enabled: false,
   },
   optimism: {
@@ -121,7 +121,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     explorerName: "OP Etherscan",
     deploymentBlock: 1n,
     blockTimeSeconds: 2,
-    maxBlocksPerQuery: 1000n,
+    maxBlocksPerQuery: 9n,          // Alchemy free tier: 10 blocks inclusive
     enabled: false,
   },
 
@@ -143,7 +143,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     explorerName: "Worldscan",
     deploymentBlock: 1n,
     blockTimeSeconds: 2,
-    maxBlocksPerQuery: 1000n,
+    maxBlocksPerQuery: 9n,          // Alchemy free tier: 10 blocks inclusive
     enabled: false,
   },
   celo: {
@@ -160,7 +160,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     explorerName: "Celoscan",
     deploymentBlock: 1n,
     blockTimeSeconds: 5,
-    maxBlocksPerQuery: 1000n,
+    maxBlocksPerQuery: 9n,          // Alchemy free tier: 10 blocks inclusive
     enabled: false,
   },
   soneium: {
@@ -177,7 +177,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     explorerName: "Blockscout",
     deploymentBlock: 1n,
     blockTimeSeconds: 2,
-    maxBlocksPerQuery: 1000n,
+    maxBlocksPerQuery: 9n,          // Alchemy free tier: 10 blocks inclusive
     enabled: false,
   },
   xlayer: {
@@ -194,7 +194,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     explorerName: "OKLink",
     deploymentBlock: 1n,
     blockTimeSeconds: 2,
-    maxBlocksPerQuery: 1000n,
+    maxBlocksPerQuery: 9n,          // Alchemy free tier: 10 blocks inclusive
     enabled: false,
   },
   zora: {
@@ -211,7 +211,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     explorerName: "Zora Explorer",
     deploymentBlock: 1n,
     blockTimeSeconds: 2,
-    maxBlocksPerQuery: 1000n,
+    maxBlocksPerQuery: 9n,          // Alchemy free tier: 10 blocks inclusive
     enabled: false,
   },
 };
