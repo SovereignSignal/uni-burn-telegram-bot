@@ -1,4 +1,4 @@
-import type { BurnEvent, ExtendedBurnStats, Config } from "./types";
+import type { BurnEvent, ExtendedBurnStats, Config, StoredBurn } from "./types";
 import type { ChainConfig } from "./chainConfig";
 import { getExplorerTxUrl, getExplorerAddressUrl, CHAIN_REGISTRY } from "./chainConfig";
 
@@ -140,6 +140,34 @@ Monitoring UNI token burns to Firepit and 0xdead addresses.
 Alerts will be posted here when burns are detected.
 
 📈 <a href="${config.siteUrl}">View TokenJar Dashboard</a>`;
+}
+
+/**
+ * Format a compact burn summary for inline query results
+ */
+export function formatInlineBurnResult(burn: StoredBurn, chain: ChainConfig, uniPriceUsd: number | null = null): string {
+  const initiatorShort = `${burn.burner.slice(0, 6)}...${burn.burner.slice(-4)}`;
+  const txHashShort = `${burn.txHash.slice(0, 10)}...`;
+  const txUrl = getExplorerTxUrl(chain, burn.txHash);
+  const addressUrl = getExplorerAddressUrl(chain, burn.burner);
+
+  const burnAmountNum = parseFloat(burn.uniAmount);
+  const formattedAmount = burnAmountNum.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  const amountUsd = uniPriceUsd
+    ? ` (~$${(burnAmountNum * uniPriceUsd).toLocaleString("en-US", { maximumFractionDigits: 0 })})`
+    : "";
+
+  const timeSince = formatDuration(Math.floor(Date.now() / 1000) - burn.timestamp);
+
+  const title = chain.id === "ethereum"
+    ? "🔥 <b>UNI Burn</b>"
+    : `🔥 <b>UNI Burn on ${chain.name}</b>`;
+
+  return `${title}
+<b>Amount:</b> ${formattedAmount} UNI${amountUsd}
+<b>Searcher:</b> <a href="${addressUrl}">${initiatorShort}</a>
+<b>Tx:</b> <a href="${txUrl}">${txHashShort}</a>
+<b>Time:</b> ${timeSince} ago`;
 }
 
 /**

@@ -1,7 +1,7 @@
 import TelegramBot from "node-telegram-bot-api";
-import type { Config, ExtendedBurnStats, BurnEvent, DebugInfo } from "./types";
-import { getLastBurn } from "./database";
-import { formatBurnAlert } from "./formatter";
+import type { Config, ExtendedBurnStats, BurnEvent, StoredBurn, DebugInfo } from "./types";
+import { getLastBurn, getRecentBurns } from "./database";
+import { formatBurnAlert, formatInlineBurnResult } from "./formatter";
 import { getChainConfig, getExplorerAddressUrl, CHAIN_REGISTRY } from "./chainConfig";
 import type { ChainConfig } from "./chainConfig";
 
@@ -221,6 +221,101 @@ ${priceLine}
 ${topSearchersText}
 
 📈 <a href="${config.siteUrl}">TokenJar Dashboard</a>`;
+}
+
+export function registerInlineQueryHandler(
+  getStats: () => Promise<ExtendedBurnStats>,
+  getPrice: () => Promise<number | null>
+): void {
+  if (!bot) {
+    throw new Error("Telegram bot not initialized");
+  }
+
+  bot.on("inline_query", async (query) => {
+    if (!configRef) return;
+
+    try {
+      const results: TelegramBot.InlineQueryResultArticle[] = [];
+      const [stats, price, recentBurns] = await Promise.all([
+        getStats(),
+        getPrice(),
+        getRecentBurns(3),
+      ]);
+
+      // Stats result (always shown)
+      const statsMessage = formatStatsMessage(stats, configRef, price);
+      const totalBurnedNum = parseFloat(stats.totalBurned);
+      const totalUni = totalBurnedNum.toLocaleString("en-US", { maximumFractionDigits: 0 });
+      results.push({
+        type: "article",
+        id: "stats",
+        title: "UNI Burn Statistics",
+        description: `${totalUni} UNI burned across ${stats.burnCount} transactions`,
+        input_message_content: {
+          message_text: statsMessage,
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+        },
+      });
+
+      // Price result
+      if (price !== null) {
+        results.push({
+          type: "article",
+          id: "price",
+          title: "UNI Price",
+          description: `$${price.toFixed(4)} per UNI`,
+          input_message_content: {
+            message_text: `💰 <b>UNI Price:</b> $${price.toFixed(4)}\n<b>Total Burned:</b> ${totalUni} UNI (~$${(totalBurnedNum * price).toLocaleString("en-US", { maximumFractionDigits: 0 })})\n<i>Source: Uniswap Trading API</i>`,
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+          },
+        });
+      }
+
+      // Recent burns
+      for (const burn of recentBurns) {
+        const chain = getChainConfig(burn.chain) || CHAIN_REGISTRY["ethereum"];
+        const burnAmountNum = parseFloat(burn.uniAmount);
+        const formattedAmount = burnAmountNum.toLocaleString("en-US", { maximumFractionDigits: 0 });
+        const timeSinceSeconds = Math.floor(Date.now() / 1000) - burn.timestamp;
+        const timeSince = formatDuration(timeSinceSeconds);
+        const chainLabel = burn.chain === "ethereum" ? "" : ` on ${chain.name}`;
+
+        results.push({
+          type: "article",
+          id: `burn-${burn.txHash.slice(0, 16)}`,
+          title: `${formattedAmount} UNI Burn${chainLabel}`,
+          description: `${timeSince} ago · ${burn.burner.slice(0, 10)}...`,
+          input_message_content: {
+            message_text: formatInlineBurnResult(burn, chain, price),
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+          },
+        });
+      }
+
+      if (results.length === 0) {
+        results.push({
+          type: "article",
+          id: "empty",
+          title: "No burn data available yet",
+          description: "The bot hasn't recorded any burns yet.",
+          input_message_content: {
+            message_text: "No UNI burn data available yet.",
+            parse_mode: "HTML",
+          },
+        });
+      }
+
+      await bot!.answerInlineQuery(query.id, results, { cache_time: 60 });
+    } catch (error) {
+      console.error("[Telegram] Inline query error:", error);
+      await bot!.answerInlineQuery(query.id, [], { cache_time: 10 });
+    }
+  });
+
+  console.log("[Telegram] Inline query handler registered");
 }
 
 export function getTelegramBot(): TelegramBot {

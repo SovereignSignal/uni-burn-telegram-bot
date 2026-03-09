@@ -1,6 +1,6 @@
 import { loadConfig } from "./config";
 import { initDatabase, isBurnNotified, saveBurn, getExtendedBurnStats, getLastProcessedBlock, setLastProcessedBlock, closeDatabase, getBurnStats } from "./database";
-import { initTelegramBot, sendBurnAlert, testConnection, registerStatsCommand, registerDebugCommand, registerPriceCommand } from "./telegramService";
+import { initTelegramBot, sendBurnAlert, testConnection, registerStatsCommand, registerDebugCommand, registerPriceCommand, registerInlineQueryHandler } from "./telegramService";
 import { initChainClient, getCurrentBlockNumber, fetchBurnsSinceBlock } from "./chainMonitor";
 import { formatBurnAlert, formatStartupMessage } from "./formatter";
 import { checkNeedsBackfill, runBackfill } from "./backfillService";
@@ -166,9 +166,10 @@ async function main(): Promise<void> {
       process.exit(1);
     }
 
-    // Register command handlers for /stats, /test, and /price
+    // Register command handlers for /stats, /test, /price, and inline queries
     registerStatsCommand(getExtendedBurnStats, getUniPriceUsd);
     registerPriceCommand(getUniPriceUsd);
+    registerInlineQueryHandler(getExtendedBurnStats, getUniPriceUsd);
 
     // Register debug command
     registerDebugCommand(async (): Promise<DebugInfo> => {
