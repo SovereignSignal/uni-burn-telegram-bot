@@ -10,7 +10,7 @@ A Telegram bot that monitors UNI token burns across multiple EVM chains and send
 
 - **Runtime**: Node.js (>=18.0.0)
 - **Language**: TypeScript (ES2022, strict mode)
-- **Blockchain**: [viem](https://viem.sh/) for multi-chain EVM interactions via Alchemy RPC
+- **Blockchain**: [viem](https://viem.sh/) for multi-chain EVM interactions via free public RPCs
 - **Database**: PostgreSQL with `pg` driver
 - **Telegram**: `node-telegram-bot-api` for bot functionality
 - **Build**: TypeScript compiler (`tsc`)
@@ -51,9 +51,10 @@ src/
 
 ### Multi-Chain Design
 
-- **Chain registry** (`chainConfig.ts`): Hardcoded `CHAIN_REGISTRY` map with per-chain config (RPC slug, token address, explorer, block limits, deployment block)
-- **Single Alchemy API key**: Same key works across all Alchemy-supported chains via different URL subdomains
-- **Sequential polling**: Chains are polled one at a time in the main loop to respect shared rate limits
+- **Chain registry** (`chainConfig.ts`): Hardcoded `CHAIN_REGISTRY` map with per-chain config (public RPC URL, token address, explorer, block limits, deployment block)
+- **Free public RPCs**: Uses publicnode.com endpoints (no API key needed), supports 2000+ block getLogs ranges
+- **Sequential polling**: Chains are polled one at a time in the main loop to respect rate limits
+- **Non-blocking backfill**: Polling starts immediately; historical backfill runs in background for chains with no history
 - **Backwards-compatible**: With no `ENABLED_CHAINS` env var, only Ethereum is monitored (identical to pre-multi-chain behavior)
 - **Per-chain state**: `lastProcessedBlock:${chainId}` keys in state table
 
@@ -128,12 +129,13 @@ src/
 
 **Per-chain config (chainConfig.ts):**
 - `blockTimeSeconds`: ~12 for Ethereum, ~2 for L2s, ~0.25 for Arbitrum
-- `maxBlocksPerQuery`: 9n for Ethereum (Alchemy free tier), 1000n+ for L2s
+- `maxBlocksPerQuery`: 2000n for all chains (public RPCs support large ranges)
 - `deploymentBlock`: Chain-specific backfill start block
 - Initial lookback calculated dynamically: `Math.ceil(7200 / blockTimeSeconds)` blocks (~2 hours)
 
 **Backfill (backfillService.ts):**
-- `DELAY_BETWEEN_CHUNKS_MS`: 100ms (rate limiting protection)
+- `DELAY_BETWEEN_CHUNKS_MS`: 200ms (rate limiting protection)
+- `MAX_RETRIES`: 3 per chunk (skips after 3 failures instead of infinite retry)
 - Uses each chain's `maxBlocksPerQuery` and `deploymentBlock`
 
 ## Environment Variables
@@ -141,7 +143,6 @@ src/
 **Required:**
 - `TELEGRAM_BOT_TOKEN` - From @BotFather
 - `TELEGRAM_CHANNEL_ID` - Channel ID or @username
-- `ALCHEMY_API_KEY` - RPC access (same key for all chains)
 - `DATABASE_URL` or `POSTGRES_URL` - PostgreSQL connection string
 
 **Optional:**
@@ -232,11 +233,12 @@ src/
 ## Important Notes
 
 - The bot uses polling (not webhooks) for simplicity
-- Alchemy free tier has a 10-block limit per `getLogs` query on Ethereum mainnet; L2s have higher limits
+- Uses free public RPCs (publicnode.com) — no API key needed for blockchain access
+- Public RPCs support 2000+ block getLogs ranges (vs Alchemy free tier's 10-block limit)
 - Burns are deduplicated by (tx_hash, chain) in the database (composite UNIQUE + ON CONFLICT DO NOTHING)
 - The Ethereum backfill starts from Firepit deployment (block 24028203, December 16, 2025)
 - First UNI transfers to Firepit occurred at block 24116850 (December 29, 2025)
-- Chains are polled sequentially to respect shared Alchemy rate limits
+- Chains are polled sequentially to respect RPC rate limits
 
 ## Key Interfaces (types.ts)
 
@@ -259,7 +261,7 @@ src/
 | `id` | Unique chain identifier (e.g., "ethereum") |
 | `name` | Display name (e.g., "Ethereum") |
 | `viemChain` | viem Chain object for client creation |
-| `alchemySlug` | Alchemy URL subdomain (e.g., "eth-mainnet") |
+| `rpcUrl` | Public RPC endpoint URL |
 | `tokenAddress` | UNI token contract on this chain |
 | `firepitAddress` | Firepit/releaser contract |
 | `explorerUrl` / `explorerName` | Block explorer for links |
