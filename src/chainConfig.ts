@@ -20,7 +20,7 @@ export interface ChainConfig {
   name: string;
   chainId: number;
   viemChain: Chain;
-  alchemySlug: string;
+  rpcUrl: string;                  // Public RPC endpoint
   tokenAddress: Address;
   tokenDecimals: number;
   firepitAddress: Address;       // Ethereum: Firepit contract. L2s: Releaser contract (bridges UNI back to mainnet for burning)
@@ -44,7 +44,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     name: "Ethereum",
     chainId: 1,
     viemChain: mainnet,
-    alchemySlug: "eth-mainnet",
+    rpcUrl: "https://ethereum-rpc.publicnode.com",
     tokenAddress: "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984",
     tokenDecimals: 18,
     firepitAddress: "0x0D5Cd355e2aBEB8fb1552F56c965B867346d6721",  // Releaser (Firepit)
@@ -53,7 +53,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     explorerName: "Etherscan",
     deploymentBlock: 24028203n,  // Firepit deployed Dec 16, 2025
     blockTimeSeconds: 12,
-    maxBlocksPerQuery: 9n,       // Alchemy free tier: 10 blocks inclusive
+    maxBlocksPerQuery: 2000n,
     enabled: true,
   },
   unichain: {
@@ -61,7 +61,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     name: "Unichain",
     chainId: 130,
     viemChain: unichain,
-    alchemySlug: "unichain-mainnet",
+    rpcUrl: "https://unichain-rpc.publicnode.com",
     tokenAddress: "0x8f187aA05619a017077f5308904739877ce9eA21",     // Native Bridge UNI
     tokenDecimals: 18,
     firepitAddress: "0xe0A780E9105aC10Ee304448224Eb4A2b11A77eeB",   // OptimismBridgedResourceFirepit (Releaser)
@@ -70,7 +70,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     explorerName: "Uniscan",
     deploymentBlock: 33348206n,      // Releaser deployed Nov 25, 2025
     blockTimeSeconds: 2,
-    maxBlocksPerQuery: 9n,          // Alchemy free tier: 10 blocks inclusive (same as Ethereum)
+    maxBlocksPerQuery: 2000n,
     enabled: false,
   },
   arbitrum: {
@@ -78,7 +78,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     name: "Arbitrum",
     chainId: 42161,
     viemChain: arbitrum,
-    alchemySlug: "arb-mainnet",
+    rpcUrl: "https://arbitrum-one-rpc.publicnode.com",
     tokenAddress: "0xFa7F8980b0f1E64A2062791cc3b0871572f1F7f0",     // Bridged UNI on Arbitrum
     tokenDecimals: 18,
     firepitAddress: "0xB8018422bcE25D82E70cB98FdA96a4f502D89427",   // ArbitrumBridgedResourceFirepit (Releaser)
@@ -87,7 +87,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     explorerName: "Arbiscan",
     deploymentBlock: 1n,
     blockTimeSeconds: 0.25,
-    maxBlocksPerQuery: 9n,          // Alchemy free tier: 10 blocks inclusive
+    maxBlocksPerQuery: 2000n,
     enabled: false,
   },
   base: {
@@ -95,7 +95,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     name: "Base",
     chainId: 8453,
     viemChain: base,
-    alchemySlug: "base-mainnet",
+    rpcUrl: "https://base-rpc.publicnode.com",
     tokenAddress: "0xc3De830EA07524a0761646a6a4e4be0e114a3C83",     // Bridged UNI on Base
     tokenDecimals: 18,
     firepitAddress: "0xFf77c0ED0b6b13A20446969107E5867abc46f53a",   // OptimismBridgedResourceFirepit (Releaser)
@@ -104,7 +104,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     explorerName: "Basescan",
     deploymentBlock: 1n,
     blockTimeSeconds: 2,
-    maxBlocksPerQuery: 9n,          // Alchemy free tier: 10 blocks inclusive
+    maxBlocksPerQuery: 2000n,
     enabled: false,
   },
   optimism: {
@@ -112,7 +112,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     name: "OP Mainnet",
     chainId: 10,
     viemChain: optimism,
-    alchemySlug: "opt-mainnet",
+    rpcUrl: "https://optimism-rpc.publicnode.com",
     tokenAddress: "0x6fd9d7AD17242c41f7131d257212c54A0e816691",     // Bridged UNI on OP Mainnet
     tokenDecimals: 18,
     firepitAddress: "0x94460443Ca27FFC1baeCa61165fde18346C91AbD",   // OptimismBridgedResourceFirepit (Releaser)
@@ -121,7 +121,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     explorerName: "OP Etherscan",
     deploymentBlock: 1n,
     blockTimeSeconds: 2,
-    maxBlocksPerQuery: 9n,          // Alchemy free tier: 10 blocks inclusive
+    maxBlocksPerQuery: 2000n,
     enabled: false,
   },
 
@@ -134,7 +134,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     name: "World Chain",
     chainId: 480,
     viemChain: worldchain,
-    alchemySlug: "worldchain-mainnet",
+    rpcUrl: "https://worldchain-mainnet.g.alchemy.com/public",
     tokenAddress: "0x0000000000000000000000000000000000000000",       // NOT YET DEPLOYED — awaiting bridge
     tokenDecimals: 18,
     firepitAddress: "0x455e844D286631566cF98D6cb2996149734618C6",   // Releaser
@@ -143,7 +143,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     explorerName: "Worldscan",
     deploymentBlock: 1n,
     blockTimeSeconds: 2,
-    maxBlocksPerQuery: 9n,          // Alchemy free tier: 10 blocks inclusive
+    maxBlocksPerQuery: 2000n,
     enabled: false,
   },
   celo: {
@@ -151,7 +151,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     name: "Celo",
     chainId: 42220,
     viemChain: celo,
-    alchemySlug: "celo-mainnet",
+    rpcUrl: "https://celo-rpc.publicnode.com",
     tokenAddress: "0x0000000000000000000000000000000000000000",       // NOT YET DEPLOYED — awaiting bridge
     tokenDecimals: 18,
     firepitAddress: "0x2758FbaA228D7d3c41dD139F47dab1a27bF9bc25",   // Releaser
@@ -160,7 +160,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     explorerName: "Celoscan",
     deploymentBlock: 1n,
     blockTimeSeconds: 5,
-    maxBlocksPerQuery: 9n,          // Alchemy free tier: 10 blocks inclusive
+    maxBlocksPerQuery: 2000n,
     enabled: false,
   },
   soneium: {
@@ -168,7 +168,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     name: "Soneium",
     chainId: 1868,
     viemChain: soneium,
-    alchemySlug: "soneium-mainnet",
+    rpcUrl: "https://rpc.soneium.org",
     tokenAddress: "0x0000000000000000000000000000000000000000",       // NOT YET DEPLOYED — awaiting bridge
     tokenDecimals: 18,
     firepitAddress: "0xc9CC50A75cE2a5f88fa77B43e3b050480c731b6e",   // Releaser
@@ -177,7 +177,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     explorerName: "Blockscout",
     deploymentBlock: 1n,
     blockTimeSeconds: 2,
-    maxBlocksPerQuery: 9n,          // Alchemy free tier: 10 blocks inclusive
+    maxBlocksPerQuery: 2000n,
     enabled: false,
   },
   xlayer: {
@@ -185,7 +185,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     name: "X Layer",
     chainId: 196,
     viemChain: xLayer,
-    alchemySlug: "xlayer-mainnet",
+    rpcUrl: "https://rpc.xlayer.tech",
     tokenAddress: "0x0000000000000000000000000000000000000000",       // NOT YET DEPLOYED — awaiting bridge
     tokenDecimals: 18,
     firepitAddress: "0xe122E231cb52aea99690963Fd73E91e33E97468f",   // Releaser
@@ -194,7 +194,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     explorerName: "OKLink",
     deploymentBlock: 1n,
     blockTimeSeconds: 2,
-    maxBlocksPerQuery: 9n,          // Alchemy free tier: 10 blocks inclusive
+    maxBlocksPerQuery: 2000n,
     enabled: false,
   },
   zora: {
@@ -202,7 +202,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     name: "Zora",
     chainId: 7777777,
     viemChain: zora,
-    alchemySlug: "zora-mainnet",
+    rpcUrl: "https://rpc.zora.energy",
     tokenAddress: "0x0000000000000000000000000000000000000000",       // NOT YET DEPLOYED — awaiting bridge
     tokenDecimals: 18,
     firepitAddress: "0x2f98eD4D04e633169FbC941BFCc54E785853b143",   // Releaser
@@ -211,7 +211,7 @@ export const CHAIN_REGISTRY: Record<string, ChainConfig> = {
     explorerName: "Zora Explorer",
     deploymentBlock: 1n,
     blockTimeSeconds: 2,
-    maxBlocksPerQuery: 9n,          // Alchemy free tier: 10 blocks inclusive
+    maxBlocksPerQuery: 2000n,
     enabled: false,
   },
 };
@@ -239,8 +239,4 @@ export function getExplorerTxUrl(chain: ChainConfig, txHash: string): string {
 
 export function getExplorerAddressUrl(chain: ChainConfig, address: string): string {
   return `${chain.explorerUrl}/address/${address}`;
-}
-
-export function getAlchemyRpcUrl(chain: ChainConfig, apiKey: string): string {
-  return `https://${chain.alchemySlug}.g.alchemy.com/v2/${apiKey}`;
 }

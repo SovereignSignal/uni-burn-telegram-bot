@@ -9,13 +9,11 @@ import {
   type Log,
 } from "viem";
 import { saveBurn, getBurnStats } from "./database";
-import type { Config } from "./types";
 import type { ChainConfig } from "./chainConfig";
-import { getAlchemyRpcUrl, CHAIN_REGISTRY } from "./chainConfig";
+import { CHAIN_REGISTRY } from "./chainConfig";
 
 // Delay between chunks for rate limiting (each chunk does 2 getLogs calls)
-// 500ms keeps us well under Alchemy free tier CU/s limits
-const DELAY_BETWEEN_CHUNKS_MS = 500;
+const DELAY_BETWEEN_CHUNKS_MS = 200;
 
 interface TransferEventArgs {
   from: Address;
@@ -44,7 +42,6 @@ export async function checkNeedsBackfill(chain?: string): Promise<boolean> {
 }
 
 export async function runBackfill(
-  config: Config,
   chain?: ChainConfig,
   options?: { silent?: boolean }
 ): Promise<BackfillResult> {
@@ -56,7 +53,7 @@ export async function runBackfill(
 
   const client = createPublicClient({
     chain: chainConfig.viemChain,
-    transport: http(getAlchemyRpcUrl(chainConfig, config.alchemyApiKey)),
+    transport: http(chainConfig.rpcUrl),
   });
 
   const currentBlock = await client.getBlockNumber();

@@ -151,9 +151,9 @@ async function main(): Promise<void> {
     // Initialize Uniswap API for USD pricing
     initUniswapApi(config.uniswapApiKey);
 
-    // Initialize chain clients
+    // Initialize chain clients (uses viem's built-in public RPCs)
     for (const chain of chains) {
-      initChainClient(chain, config.alchemyApiKey);
+      initChainClient(chain);
     }
 
     // Initialize Telegram bot
@@ -207,7 +207,7 @@ async function main(): Promise<void> {
       const needsBackfill = await checkNeedsBackfill(chain.id);
       if (needsBackfill) {
         console.log(`[Bot] Starting background backfill for ${chain.name}...`);
-        runBackfill(config, chain).then((result) => {
+        runBackfill(chain).then((result) => {
           console.log(`[Bot] Backfill complete for ${chain.name}: ${result.totalSaved} burns imported`);
         }).catch((error) => {
           console.error(`[Bot] Backfill failed for ${chain.name}:`, error);

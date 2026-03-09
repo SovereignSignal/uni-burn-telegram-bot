@@ -11,7 +11,6 @@ import {
 } from "viem";
 import type { BurnEvent } from "./types";
 import type { ChainConfig } from "./chainConfig";
-import { getAlchemyRpcUrl } from "./chainConfig";
 
 // Type for ERC-20 Transfer event args
 interface TransferEventArgs {
@@ -27,13 +26,13 @@ type TransferLog = Log<bigint, number, false> & {
 
 const clients = new Map<string, PublicClient>();
 
-export function initChainClient(chain: ChainConfig, alchemyApiKey: string): PublicClient {
+export function initChainClient(chain: ChainConfig): PublicClient {
   const existing = clients.get(chain.id);
   if (existing) return existing;
 
   const client = createPublicClient({
     chain: chain.viemChain,
-    transport: http(getAlchemyRpcUrl(chain, alchemyApiKey)),
+    transport: http(chain.rpcUrl),
   }) as PublicClient;
 
   clients.set(chain.id, client);

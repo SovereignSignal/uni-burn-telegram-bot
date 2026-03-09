@@ -28,7 +28,7 @@ async function backfillBurns(): Promise<void> {
   await initDatabase();
 
   // Run the backfill
-  await runBackfill(config, chainConfig);
+  await runBackfill(chainConfig);
 
   // Show final stats
   const stats = await getBurnStats(chainConfig.id);
