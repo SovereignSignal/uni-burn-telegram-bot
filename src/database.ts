@@ -1,5 +1,5 @@
 import { Pool } from "pg";
-import type { StoredBurn, BurnStats, ExtendedBurnStats, TopInitiator } from "./types";
+import type { StoredBurn, BurnStats, ExtendedBurnStats, TopInitiator, PeriodBurnStats } from "./types";
 
 let pool: Pool | null = null;
 
@@ -310,6 +310,68 @@ export async function setLastProcessedBlock(blockNumber: bigint, chain: string):
     `INSERT INTO state (key, value) VALUES ($1, $2)
      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
     [`lastProcessedBlock:${chain}`, blockNumber.toString()]
+  );
+}
+
+export async function getBurnStatsForPeriod(sinceTimestamp: number): Promise<PeriodBurnStats> {
+  const pool = getPool();
+
+  const [totalResult, chainResult] = await Promise.all([
+    pool.query(
+      `SELECT COUNT(*) as count, SUM(CAST(uni_amount_raw AS NUMERIC)) as total
+       FROM burns WHERE timestamp >= $1`,
+      [sinceTimestamp]
+    ),
+    pool.query(
+      `SELECT chain, COUNT(*) as count, SUM(CAST(uni_amount_raw AS NUMERIC)) as total
+       FROM burns WHERE timestamp >= $1
+       GROUP BY chain ORDER BY count DESC`,
+      [sinceTimestamp]
+    ),
+  ]);
+
+  const totalWei = parseFloat(totalResult.rows[0]?.total) || 0;
+
+  return {
+    totalBurned: (totalWei / 1e18).toFixed(2),
+    burnCount: parseInt(totalResult.rows[0]?.count) || 0,
+    chainBreakdown: chainResult.rows.map((row) => ({
+      chain: row.chain as string,
+      burnCount: parseInt(row.count as string),
+      totalBurned: ((parseFloat(row.total as string) || 0) / 1e18).toFixed(2),
+    })),
+  };
+}
+
+export async function getTopInitiatorsForPeriod(sinceTimestamp: number, limit: number = 3): Promise<TopInitiator[]> {
+  const pool = getPool();
+  const result = await pool.query(
+    `SELECT burner as address, COUNT(*) as transaction_count
+     FROM burns WHERE timestamp >= $1
+     GROUP BY burner ORDER BY transaction_count DESC LIMIT $2`,
+    [sinceTimestamp, limit]
+  );
+  return result.rows.map((row) => ({
+    address: row.address as string,
+    transactionCount: parseInt(row.transaction_count as string),
+  }));
+}
+
+export async function getDigestTimestamp(digestType: string): Promise<number | null> {
+  const pool = getPool();
+  const result = await pool.query(
+    "SELECT value FROM state WHERE key = $1",
+    [`lastDigest:${digestType}`]
+  );
+  return result.rows[0] ? parseInt(result.rows[0].value) : null;
+}
+
+export async function setDigestTimestamp(digestType: string, timestamp: number): Promise<void> {
+  const pool = getPool();
+  await pool.query(
+    `INSERT INTO state (key, value) VALUES ($1, $2)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+    [`lastDigest:${digestType}`, timestamp.toString()]
   );
 }
 

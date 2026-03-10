@@ -30,5 +30,8 @@ export function loadConfig(): Config {
     ),
     enabledChains,
     uniswapApiKey: optionalEnv("UNISWAP_API_KEY", ""),
+    digestEnabled: optionalEnv("DIGEST_ENABLED", "false") === "true",
+    digestDailyHour: parseInt(optionalEnv("DIGEST_DAILY_HOUR", "12"), 10),
+    digestWeeklyDay: parseInt(optionalEnv("DIGEST_WEEKLY_DAY", "1"), 10),
   };
 }

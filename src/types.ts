@@ -57,6 +57,12 @@ export interface ExtendedBurnStats extends BurnStats {
   topInitiators: TopInitiator[];
 }
 
+export interface PeriodBurnStats {
+  totalBurned: string;
+  burnCount: number;
+  chainBreakdown: Array<{ chain: string; burnCount: number; totalBurned: string }>;
+}
+
 export interface Config {
   telegramBotToken: string;
   telegramChannelId: string;
@@ -66,6 +72,9 @@ export interface Config {
   amountThreshold: bigint;
   enabledChains: string[];
   uniswapApiKey: string;
+  digestEnabled: boolean;
+  digestDailyHour: number;
+  digestWeeklyDay: number;
 }
 
 export interface ChainDebugInfo {

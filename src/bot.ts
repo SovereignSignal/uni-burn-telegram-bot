@@ -4,6 +4,7 @@ import { initTelegramBot, sendBurnAlert, testConnection, registerStatsCommand, r
 import { initChainClient, getCurrentBlockNumber, fetchBurnsSinceBlock } from "./chainMonitor";
 import { formatBurnAlert, formatStartupMessage } from "./formatter";
 import { checkNeedsBackfill, runBackfill } from "./backfillService";
+import { startDigestScheduler, stopDigestScheduler } from "./digestService";
 import { getEnabledChains } from "./chainConfig";
 import { initUniswapApi, getUniPriceUsd } from "./uniswapApi";
 import type { ChainConfig } from "./chainConfig";
@@ -202,6 +203,9 @@ async function main(): Promise<void> {
     // Start polling for burns immediately (don't wait for backfill)
     await startPolling(config, chains);
 
+    // Start digest scheduler (daily/weekly summaries)
+    startDigestScheduler(config, getUniPriceUsd);
+
     // Run backfill in background for chains with no history
     // This doesn't block polling — burns are deduplicated by (tx_hash, chain)
     for (const chain of chains) {
@@ -220,6 +224,7 @@ async function main(): Promise<void> {
     const shutdown = async () => {
       console.log("\n[Bot] Shutting down...");
       stopPolling();
+      stopDigestScheduler();
       await closeDatabase();
       process.exit(0);
     };

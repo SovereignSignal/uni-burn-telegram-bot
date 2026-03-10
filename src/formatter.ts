@@ -1,4 +1,4 @@
-import type { BurnEvent, ExtendedBurnStats, Config, StoredBurn } from "./types";
+import type { BurnEvent, ExtendedBurnStats, Config, StoredBurn, PeriodBurnStats, TopInitiator } from "./types";
 import type { ChainConfig } from "./chainConfig";
 import { getExplorerTxUrl, getExplorerAddressUrl, CHAIN_REGISTRY } from "./chainConfig";
 
@@ -168,6 +168,74 @@ export function formatInlineBurnResult(burn: StoredBurn, chain: ChainConfig, uni
 <b>Searcher:</b> <a href="${addressUrl}">${initiatorShort}</a>
 <b>Tx:</b> <a href="${txUrl}">${txHashShort}</a>
 <b>Time:</b> ${timeSince} ago`;
+}
+
+/**
+ * Format a daily or weekly digest message
+ */
+export function formatDigestMessage(
+  period: "daily" | "weekly",
+  stats: PeriodBurnStats,
+  topSearcher: TopInitiator | null,
+  uniPriceUsd: number | null,
+  config: Config
+): string {
+  const periodLabel = period === "daily" ? "Daily" : "Weekly";
+
+  if (stats.burnCount === 0) {
+    const timeframe = period === "daily" ? "24 hours" : "7 days";
+    return `📋 <b>${periodLabel} UNI Burn Digest</b>\n\nNo burns recorded in the last ${timeframe}.\n\n📈 <a href="${config.siteUrl}">TokenJar Dashboard</a>`;
+  }
+
+  const totalBurnedNum = parseFloat(stats.totalBurned);
+  const totalUni = totalBurnedNum.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  const totalUsd = uniPriceUsd
+    ? ` (~$${(totalBurnedNum * uniPriceUsd).toLocaleString("en-US", { maximumFractionDigits: 0 })})`
+    : "";
+
+  // Top chain by burn count
+  const topChain = stats.chainBreakdown[0];
+  const topChainName = topChain
+    ? (CHAIN_REGISTRY[topChain.chain]?.name || topChain.chain)
+    : "N/A";
+  const topChainLine = topChain
+    ? `⛓️ <b>Top Chain:</b> ${topChainName} (${topChain.burnCount} burns)`
+    : "";
+
+  // Top searcher
+  const topSearcherLine = topSearcher
+    ? `🏆 <b>Top Searcher:</b> <a href="${getExplorerAddressUrl(CHAIN_REGISTRY["ethereum"], topSearcher.address)}">${topSearcher.address.slice(0, 10)}...</a> (${topSearcher.transactionCount} burns)`
+    : "";
+
+  // Price line
+  const priceLine = uniPriceUsd
+    ? `💰 <b>UNI Price:</b> $${uniPriceUsd.toFixed(4)}`
+    : "";
+
+  // Chain breakdown (only if multi-chain)
+  let breakdownLines = "";
+  if (stats.chainBreakdown.length > 1) {
+    breakdownLines = "\n\n<b>By Chain:</b>\n" + stats.chainBreakdown.map((c) => {
+      const name = CHAIN_REGISTRY[c.chain]?.name || c.chain;
+      const burned = parseFloat(c.totalBurned).toLocaleString("en-US", { maximumFractionDigits: 0 });
+      return `  ${name}: ${c.burnCount} burns (${burned} UNI)`;
+    }).join("\n");
+  }
+
+  const lines = [
+    `📋 <b>${periodLabel} UNI Burn Digest</b>`,
+    "",
+    `🔥 <b>Burns:</b> ${stats.burnCount}`,
+    `💎 <b>UNI Burned:</b> ${totalUni} UNI${totalUsd}`,
+    topChainLine,
+    topSearcherLine,
+    priceLine,
+    breakdownLines,
+    "",
+    `📈 <a href="${config.siteUrl}">TokenJar Dashboard</a>`,
+  ].filter(Boolean);
+
+  return lines.join("\n");
 }
 
 /**
