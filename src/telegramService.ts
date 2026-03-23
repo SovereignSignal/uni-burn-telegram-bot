@@ -41,7 +41,7 @@ export function registerStatsCommand(
       priceCallback ? priceCallback() : Promise.resolve(null),
     ]);
 
-    const message = formatStatsMessage(stats, configRef, price);
+    const message = formatStatsMessage(stats, price);
     await sendMessage(chatId.toString(), message, { disable_web_page_preview: true });
   });
 
@@ -86,7 +86,7 @@ export function registerStatsCommand(
     const chain = getChainConfig(lastBurn.chain) || CHAIN_REGISTRY["ethereum"];
 
     // Format the alert and add TEST prefix
-    const alertMessage = formatBurnAlert(burnEvent, stats, configRef, chain, price);
+    const alertMessage = formatBurnAlert(burnEvent, stats, chain, price);
     const testMessage = alertMessage.replace(
       /🔥 <b>UNI Burn Detected[^<]*<\/b>/,
       "🧪 <b>TEST: UNI Burn Detected</b>"
@@ -176,7 +176,7 @@ function formatDuration(seconds: number): string {
   return parts.join(" ");
 }
 
-function formatStatsMessage(stats: ExtendedBurnStats, config: Config, uniPriceUsd: number | null = null): string {
+function formatStatsMessage(stats: ExtendedBurnStats, uniPriceUsd: number | null = null): string {
   const totalBurnedNum = parseFloat(stats.totalBurned);
   const totalUni = totalBurnedNum.toLocaleString("en-US", {
     maximumFractionDigits: 0,
@@ -218,9 +218,7 @@ ${priceLine}
 <b>Time Since Last Burn:</b> ${timeSinceLast}
 
 <b>Top Searchers:</b>
-${topSearchersText}
-
-📈 <a href="${config.siteUrl}">TokenJar Dashboard</a>`;
+${topSearchersText}`;
 }
 
 export function registerInlineQueryHandler(
@@ -243,7 +241,7 @@ export function registerInlineQueryHandler(
       ]);
 
       // Stats result (always shown)
-      const statsMessage = formatStatsMessage(stats, configRef, price);
+      const statsMessage = formatStatsMessage(stats, price);
       const totalBurnedNum = parseFloat(stats.totalBurned);
       const totalUni = totalBurnedNum.toLocaleString("en-US", { maximumFractionDigits: 0 });
       results.push({

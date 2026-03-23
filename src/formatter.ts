@@ -1,4 +1,4 @@
-import type { BurnEvent, ExtendedBurnStats, Config, StoredBurn, PeriodBurnStats, TopInitiator } from "./types";
+import type { BurnEvent, ExtendedBurnStats, StoredBurn, PeriodBurnStats, TopInitiator } from "./types";
 import type { ChainConfig } from "./chainConfig";
 import { getExplorerTxUrl, getExplorerAddressUrl, CHAIN_REGISTRY } from "./chainConfig";
 
@@ -24,7 +24,6 @@ function formatDuration(seconds: number): string {
 export function formatBurnAlert(
   burn: BurnEvent,
   stats: ExtendedBurnStats,
-  config: Config,
   chain: ChainConfig,
   uniPriceUsd: number | null = null
 ): string {
@@ -98,8 +97,7 @@ export function formatBurnAlert(
 <b>Top Searchers:</b>
 ${topSearchersText}
 
-💎 <a href="${txUrl}">View on ${chain.explorerName}</a>
-📈 <a href="${config.siteUrl}">TokenJar Dashboard</a>`;
+💎 <a href="${txUrl}">View on ${chain.explorerName}</a>`;
 }
 
 /**
@@ -107,8 +105,7 @@ ${topSearchersText}
  */
 export function formatThresholdAlert(
   uniToThreshold: number,
-  currentJarValueUsd: number,
-  config: Config
+  currentJarValueUsd: number
 ): string {
   const formattedUni = uniToThreshold.toLocaleString("en-US", {
     maximumFractionDigits: 0,
@@ -123,23 +120,19 @@ export function formatThresholdAlert(
   return `🎯 <b>BURN THRESHOLD APPROACHING</b>
 
 Only <b>${formattedUni} UNI</b> until next burn!
-Current Jar Value: <b>${formattedUsd}</b>
-
-📈 <a href="${config.siteUrl}">Track Progress</a>`;
+Current Jar Value: <b>${formattedUsd}</b>`;
 }
 
 /**
  * Format a startup/test message
  */
-export function formatStartupMessage(config: Config, chains: ChainConfig[]): string {
+export function formatStartupMessage(chains: ChainConfig[]): string {
   const chainNames = chains.map((c) => c.name).join(", ");
   return `🤖 <b>UNI Burn Bot Online</b>
 
 Monitoring UNI token burns to Firepit and 0xdead addresses.
 <b>Chains:</b> ${chainNames}
-Alerts will be posted here when burns are detected.
-
-📈 <a href="${config.siteUrl}">View TokenJar Dashboard</a>`;
+Alerts will be posted here when burns are detected.`;
 }
 
 /**
@@ -177,14 +170,13 @@ export function formatDigestMessage(
   period: "daily" | "weekly",
   stats: PeriodBurnStats,
   topSearcher: TopInitiator | null,
-  uniPriceUsd: number | null,
-  config: Config
+  uniPriceUsd: number | null
 ): string {
   const periodLabel = period === "daily" ? "Daily" : "Weekly";
 
   if (stats.burnCount === 0) {
     const timeframe = period === "daily" ? "24 hours" : "7 days";
-    return `📋 <b>${periodLabel} UNI Burn Digest</b>\n\nNo burns recorded in the last ${timeframe}.\n\n📈 <a href="${config.siteUrl}">TokenJar Dashboard</a>`;
+    return `📋 <b>${periodLabel} UNI Burn Digest</b>\n\nNo burns recorded in the last ${timeframe}.`;
   }
 
   const totalBurnedNum = parseFloat(stats.totalBurned);
@@ -231,8 +223,6 @@ export function formatDigestMessage(
     topSearcherLine,
     priceLine,
     breakdownLines,
-    "",
-    `📈 <a href="${config.siteUrl}">TokenJar Dashboard</a>`,
   ].filter(Boolean);
 
   return lines.join("\n");

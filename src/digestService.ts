@@ -86,7 +86,7 @@ async function maybeSendDigest(
   ]);
 
   const topSearcher = topSearchers[0] || null;
-  const message = formatDigestMessage(period, stats, topSearcher, price, config);
+  const message = formatDigestMessage(period, stats, topSearcher, price);
 
   await sendBurnAlert(config.telegramChannelId, message);
   await setDigestTimestamp(period, nowSeconds);

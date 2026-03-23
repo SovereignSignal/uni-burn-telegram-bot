@@ -24,7 +24,6 @@ export function loadConfig(): Config {
     telegramChannelId: requireEnv("TELEGRAM_CHANNEL_ID"),
     alchemyApiKey: optionalEnv("ALCHEMY_API_KEY", ""),
     pollIntervalSeconds: parseInt(optionalEnv("POLL_INTERVAL_SECONDS", "60"), 10),
-    siteUrl: optionalEnv("SITE_URL", "https://tokenjar.xyz"),
     amountThreshold: BigInt(
       optionalEnv("AMOUNT_THRESHOLD", "4000000000000000000000")
     ),

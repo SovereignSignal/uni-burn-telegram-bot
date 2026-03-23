@@ -68,7 +68,6 @@ export interface Config {
   telegramChannelId: string;
   alchemyApiKey: string;
   pollIntervalSeconds: number;
-  siteUrl: string;
   amountThreshold: bigint;
   enabledChains: string[];
   uniswapApiKey: string;

@@ -56,7 +56,7 @@ async function processNewBurns(config: Config, chain: ChainConfig): Promise<void
       ]);
 
       // Format and send the alert
-      const message = formatBurnAlert(burn, stats, config, chain, uniPrice);
+      const message = formatBurnAlert(burn, stats, chain, uniPrice);
 
       try {
         await sendBurnAlert(config.telegramChannelId, message);
@@ -196,7 +196,7 @@ async function main(): Promise<void> {
     });
 
     // Send startup message
-    const startupMessage = formatStartupMessage(config, chains);
+    const startupMessage = formatStartupMessage(chains);
     await sendBurnAlert(config.telegramChannelId, startupMessage);
     console.log("[Bot] Startup message sent");
 

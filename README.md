@@ -47,7 +47,6 @@ DATABASE_URL=postgresql://user:password@localhost:5432/uniburn
 
 # Optional
 POLL_INTERVAL_SECONDS=60
-SITE_URL=https://your-tokenjar-site.com
 ```
 
 ### 3. Run Locally
@@ -90,7 +89,6 @@ The bot responds to the following commands in Telegram:
    - `TELEGRAM_BOT_TOKEN`
    - `TELEGRAM_CHANNEL_ID`
    - `ALCHEMY_API_KEY`
-   - `SITE_URL` (optional)
    - Note: Railway automatically provides `DATABASE_URL` from the PostgreSQL service
 6. Deploy!
 
@@ -136,7 +134,6 @@ Top Searchers:
 🥉 0x9012ijkl... - 8 burns
 
 💎 View on Etherscan
-📈 TokenJar Dashboard
 ```
 
 ## Environment Variables
@@ -148,7 +145,6 @@ Top Searchers:
 | `ALCHEMY_API_KEY` | Yes | - | Alchemy API key for Ethereum RPC |
 | `DATABASE_URL` | Yes | - | PostgreSQL connection string (or `POSTGRES_URL`) |
 | `POLL_INTERVAL_SECONDS` | No | `60` | How often to check for new burns |
-| `SITE_URL` | No | `https://tokenjar.xyz` | Your TokenJar monitor site |
 | `TOKEN_ADDRESS` | No | UNI address | ERC-20 token to monitor |
 | `TOKEN_DECIMALS` | No | `18` | Token decimal precision |
 | `FIREPIT_ADDRESS` | No | Firepit address | First burn destination |

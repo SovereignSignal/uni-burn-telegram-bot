@@ -147,7 +147,6 @@ src/
 
 **Optional:**
 - `POLL_INTERVAL_SECONDS` (default: 60)
-- `SITE_URL` (default: https://tokenjar.xyz)
 - `AMOUNT_THRESHOLD` - Minimum burn amount for alerts (in wei, default: 4000 UNI)
 - `ENABLED_CHAINS` - Comma-separated chain IDs (default: "ethereum")
 - `UNISWAP_API_KEY` - Uniswap Trading API key for USD price enrichment
